@@ -1,74 +1,61 @@
+// app/(tabs)/_layout.tsx
 import React from 'react';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { Link, Tabs } from 'expo-router';
-import { Pressable } from 'react-native';
-
-import Colors from '@/constants/Colors';
-import { useColorScheme } from '@/components/useColorScheme';
-import { useClientOnlyValue } from '@/components/useClientOnlyValue';
-
-// You can explore the built-in icon families and icons on the web at https://icons.expo.fyi/
-function TabBarIcon(props: {
-  name: React.ComponentProps<typeof FontAwesome>['name'];
-  color: string;
-}) {
-  return <FontAwesome size={28} style={{ marginBottom: -3 }} {...props} />;
-}
+import { Tabs } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons'; // Or your preferred icon library
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
+    return (
+        <Tabs
+            screenOptions={({ route }) => ({
+                tabBarIcon: ({ focused, color, size }) => {
+                    let iconName: React.ComponentProps<typeof Ionicons>['name'] = 'alert-circle'; // Default
 
-  return (
-    <Tabs
-      screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
-        // Disable the static render of the header on web
-        // to prevent a hydration error in React Navigation v6.
-        headerShown: useClientOnlyValue(false, true),
-      }}>
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <TabBarIcon name="code" color={color} />,
-          headerRight: () => (
-            <Link href="/modal" asChild>
-              <Pressable>
-                {({ pressed }) => (
-                  <FontAwesome
-                    name="info-circle"
-                    size={25}
-                    color={Colors[colorScheme ?? 'light'].text}
-                    style={{ marginRight: 15, opacity: pressed ? 0.5 : 1 }}
-                  />
-                )}
-              </Pressable>
-            </Link>
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="two"
-        options={{
-          title: 'History',
-          tabBarIcon: ({ color }) => <TabBarIcon name="code" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="three"
-        options={{
-          title: 'Notifications',
-          tabBarIcon: ({ color }) => <TabBarIcon name="code" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="four"
-        options={{
-          title: 'Profile',
-          tabBarIcon: ({ color }) => <TabBarIcon name="code" color={color} />,
-        }}
-      />
-    </Tabs>
-    
-  );
+                    if (route.name === 'index') {
+                        iconName = focused ? 'map' : 'map-outline';
+                    } else if (route.name === 'trips') {
+                        iconName = focused ? 'list-circle' : 'list-circle-outline';
+                    } else if (route.name === 'profile') {
+                        iconName = focused ? 'person' : 'person-outline';
+                    } else if (route.name === 'settings') {
+                        iconName = focused ? 'settings' : 'settings-outline';
+                    }
+
+                    return <Ionicons name={iconName} size={size} color={color} />;
+                },
+                tabBarActiveTintColor: '#FF8C00', // Orange-like color
+                tabBarInactiveTintColor: 'gray',
+                headerShown: false, // We'll let each stack handle its own header
+                 tabBarStyle: {
+                    backgroundColor: '#FFFFFF', // White background for tabs
+                    borderTopWidth: 1,
+                    borderTopColor: '#E0E0E0',
+                 }
+            })}
+        >
+            <Tabs.Screen
+                name="index"
+                options={{
+                    title: 'Plan & Map', // "Planlæg"
+                }}
+            />
+             <Tabs.Screen
+                name="trips"
+                options={{
+                    title: 'Trips', // Could be "Billetter" or "Ruter"
+                }}
+            />
+            <Tabs.Screen
+                name="profile"
+                options={{
+                    title: 'Profile', // "Min Side"
+                }}
+            />
+             <Tabs.Screen
+                name="settings"
+                options={{
+                    title: 'Settings', // "Indstillinger"
+                }}
+            />
+        </Tabs>
+    );
 }
