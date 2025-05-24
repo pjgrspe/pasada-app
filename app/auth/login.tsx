@@ -27,9 +27,14 @@ const LoginScreen = () => {
                 <Text style={[styles.title, dynamicStyles.title]}>Login</Text>
                 <Text style={[styles.subtitle, dynamicStyles.subtitle]}>Welcome back!</Text>
                 <LoginForm />
-                <Link href="/auth/signup" style={[styles.linkBase, dynamicStyles.link]}>
+                <Link href="/auth/signup" replace style={[styles.linkBase, dynamicStyles.link]}>
                     Don't have an account? Sign Up
                 </Link>
+
+                {/* <Pressable onPress={() => router.replace('/auth/signup')} style={[styles.linkBase]}>
+                    <Text>Don't have an account? Sign Up</Text>
+                </Pressable> */}
+
             </ScrollView>
         </KeyboardAvoidingView>
     );
