@@ -1,14 +1,20 @@
 // app/(tabs)/profile/_layout.tsx
 import React from 'react';
 import { Stack } from 'expo-router';
+import { useTheme } from '../../../hooks/useTheme'; // Import hook
 
 export default function ProfileLayout() {
+    const { colors } = useTheme(); // Get theme colors
     return (
         <Stack
              screenOptions={{
-                headerStyle: { backgroundColor: '#f4511e' },
-                headerTintColor: '#fff',
-                headerShown: true, // Show headers by default here
+                // --- Apply Theme Colors ---
+                headerStyle: { backgroundColor: colors.header },
+                headerTintColor: colors.headerText,
+                headerTitleStyle: {
+                    fontWeight: 'bold',
+                },
+                // --------------------------
             }}
         >
             <Stack.Screen name="index" options={{ title: 'My Profile' }} />

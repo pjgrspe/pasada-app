@@ -1,92 +1,45 @@
 // app/auth/login.tsx
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import React from 'react';
+import { Text, StyleSheet, ScrollView, Platform, KeyboardAvoidingView } from 'react-native';
 import { Link } from 'expo-router';
-import Input from '@/components/Input';
-import Button from '@/components/Button';
+import { LoginForm } from '../../modules/auth/components/LoginForm'; // Import from module
+import { useTheme } from '../../hooks/useTheme';
 
-// Placeholder: Import your actual LoginForm component
-// import LoginForm from '../../modules/auth/components/LoginForm';
-
-// Placeholder Component
 const LoginScreen = () => {
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
+    const { colors } = useTheme();
 
-    const handleLogin = () => {
-        console.log('Logging in with:', email, password);
-        // Add your actual login logic here (using useAuth hook, etc.)
-        // On success, the _layout.tsx should handle redirection.
-    };
+    const dynamicStyles = StyleSheet.create({
+        container: { backgroundColor: '#1C1C1E' },
+        title: { color: '#FFFFFF' },
+        subtitle: { color: 'gray' },
+        link: { color: colors.primary },
+    });
 
     return (
-        <ScrollView contentContainerStyle={styles.container}>
-            <Text style={styles.title}>Login</Text>
-            <Text style={styles.subtitle}>Welcome back!</Text>
-
-            {/* --- USE YOUR COMPONENTS --- */}
-            <View style={styles.formContainer}>
-                <Input
-                    placeholder="your@email.com"
-                    value={email}
-                    onChangeText={setEmail}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    iconName="mail-outline" // Example icon
-                />
-                <Input
-                    placeholder="Password"
-                    value={password}
-                    onChangeText={setPassword}
-                    secureTextEntry
-                    iconName="lock-closed-outline" // Example icon
-                />
-                <Button
-                    title="Login"
-                    onPress={handleLogin}
-                    style={styles.loginButton}
-                />
-            </View>
-            {/* --------------------------- */}
-
-            <Link href="/auth/signup" style={styles.link}>
-                <Text>Don't have an account? Sign Up</Text>
-            </Link>
-        </ScrollView>
+        <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+            <ScrollView
+                contentContainerStyle={[styles.container, dynamicStyles.container]}
+                keyboardShouldPersistTaps="handled" // Important for forms
+            >
+                <Text style={[styles.title, dynamicStyles.title]}>Login</Text>
+                <Text style={[styles.subtitle, dynamicStyles.subtitle]}>Welcome back!</Text>
+                <LoginForm />
+                <Link href="/auth/signup" style={[styles.linkBase, dynamicStyles.link]}>
+                    Don't have an account? Sign Up
+                </Link>
+            </ScrollView>
+        </KeyboardAvoidingView>
     );
 };
 
 const styles = StyleSheet.create({
-    container: {
-        flexGrow: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        padding: 20,
-        backgroundColor: '#1C1C1E', // Darker background for auth
-    },
-    title: {
-        fontSize: 32,
-        fontWeight: 'bold',
-        marginBottom: 8,
-        color: '#FFFFFF',
-    },
-    subtitle: {
-        fontSize: 16,
-        color: 'gray',
-        marginBottom: 40,
-    },
-    formContainer: {
-        width: '100%',
-        marginBottom: 20,
-    },
-    loginButton: {
-      marginTop: 15,
-    },
-    link: {
-        marginTop: 15,
-        color: '#FF8C00', // Orange link
-        textAlign: 'center',
-    },
+    container: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
+    title: { fontSize: 32, fontWeight: 'bold', marginBottom: 8 },
+    subtitle: { fontSize: 16, marginBottom: 40 },
+    linkBase: { marginTop: 25, textAlign: 'center', fontSize: 16 },
 });
 
 export default LoginScreen;

@@ -1,13 +1,20 @@
 // app/(tabs)/trips/_layout.tsx
 import React from 'react';
 import { Stack } from 'expo-router';
+import { useTheme } from '../../../hooks/useTheme'; // Import hook
 
 export default function TripsLayout() {
+    const { colors } = useTheme(); // Get theme colors
     return (
         <Stack
             screenOptions={{
-                headerStyle: { backgroundColor: '#f4511e' },
-                headerTintColor: '#fff',
+                // --- Apply Theme Colors ---
+                headerStyle: { backgroundColor: colors.header },
+                headerTintColor: colors.headerText,
+                headerTitleStyle: {
+                    fontWeight: 'bold',
+                },
+                // --------------------------
             }}
         >
             <Stack.Screen

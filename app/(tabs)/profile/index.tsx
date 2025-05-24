@@ -7,6 +7,7 @@ import { useRouter } from 'expo-router';
 import Avatar from '../../../components/Avatar';
 import Button from '../../../components/Button';
 // ------------------------------
+import { useTheme } from '../../../hooks/useTheme'; // Import useTheme
 
 // Placeholder
 const useUserStore = () => ({
@@ -20,6 +21,7 @@ const useUserStore = () => ({
 const ProfileScreen = () => {
     const { user } = useUserStore();
     const router = useRouter();
+    const { colors } = useTheme(); // Use theme
     // const { logout } = useAuth();
 
     const handleLogout = () => {
@@ -28,20 +30,22 @@ const ProfileScreen = () => {
         // The _layout should handle redirection automatically.
     }
 
+    const dynamicStyles = StyleSheet.create({
+        container: { backgroundColor: colors.background },
+        name: { color: colors.text },
+        email: { color: colors.text, opacity: 0.6 },
+    });
+
+
     if (!user) {
-        return <View style={styles.centered}><Text>No user data.</Text></View>;
+        return <View style={[styles.centered, dynamicStyles.container]}><Text style={dynamicStyles.name}>No user data.</Text></View>;
     }
 
     return (
-        <View style={styles.container}>
-            {/* --- USE YOUR AVATAR COMPONENT --- */}
-            <Avatar source={{ uri: user.avatarUrl }} size={120} />
-            {/* --------------------------------- */}
-
-            <Text style={styles.name}>{user.name}</Text>
-            <Text style={styles.email}>{user.email}</Text>
-
-            {/* --- USE YOUR BUTTON COMPONENT --- */}
+        <View style={[styles.container, dynamicStyles.container]}>
+            <Avatar source={{ uri: user.avatarUrl }} size={120} style={{ borderColor: colors.primary }} />
+            <Text style={[styles.name, dynamicStyles.name]}>{user.name}</Text>
+            <Text style={[styles.email, dynamicStyles.email]}>{user.email}</Text>
             <View style={styles.buttonsContainer}>
                  <Button
                     title="Edit Profile"
@@ -50,7 +54,7 @@ const ProfileScreen = () => {
                  />
                  <Button
                     title="Settings"
-                    onPress={() => router.push('/(tabs)/settings')} // Navigate to settings tab/screen
+                    onPress={() => router.push('/(tabs)/settings')}
                     variant="dark"
                  />
                  <Button
@@ -59,38 +63,16 @@ const ProfileScreen = () => {
                     variant="danger"
                  />
             </View>
-            {/* ------------------------------- */}
         </View>
     );
 };
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        alignItems: 'center',
-        paddingTop: 40,
-        paddingHorizontal: 30,
-        backgroundColor: '#fff',
-    },
-    centered: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    name: {
-        fontSize: 24,
-        fontWeight: 'bold',
-        marginTop: 20, // Add space after avatar
-    },
-    email: {
-        fontSize: 16,
-        color: 'gray',
-        marginBottom: 40,
-    },
-    buttonsContainer: {
-        width: '100%',
-        alignItems: 'stretch', // Make buttons take full width
-    },
+    container: { flex: 1, alignItems: 'center', paddingTop: 40, paddingHorizontal: 30 },
+    centered: { justifyContent: 'center' },
+    name: { fontSize: 24, fontWeight: 'bold', marginTop: 20 },
+    email: { fontSize: 16, marginBottom: 40 },
+    buttonsContainer: { width: '100%', alignItems: 'stretch' },
 });
 
 export default ProfileScreen;
