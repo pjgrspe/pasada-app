@@ -16,7 +16,7 @@ export const lightThemeColors = {
   tabBar: '#FFFFFF',
   tabBarActive: '#FF8C00',
   tabBarInactive: '#8E8E93',
-  header: '#f4511e', // Example: Keep original orange header
+  header: '#FF8C00', // Example: Keep original orange header
   headerText: '#FFFFFF',
 };
 
