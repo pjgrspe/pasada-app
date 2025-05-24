@@ -1,9 +1,10 @@
 // app/auth/signup.tsx
 import React from 'react';
-import { Text, StyleSheet, ScrollView, Platform, KeyboardAvoidingView } from 'react-native';
+import { Text, StyleSheet, ScrollView, Platform, KeyboardAvoidingView, Pressable } from 'react-native';
 import { Link } from 'expo-router';
 import { SignupForm } from '../../modules/auth/components/SignupForm'; // Import from module
 import { useTheme } from '../../hooks/useTheme';
+import { router } from 'expo-router';
 
 const SignupScreen = () => {
     const { colors } = useTheme();
@@ -27,9 +28,14 @@ const SignupScreen = () => {
                 <Text style={[styles.title, dynamicStyles.title]}>Create Account</Text>
                 <Text style={[styles.subtitle, dynamicStyles.subtitle]}>Join us and start tracking!</Text>
                 <SignupForm />
-                <Link href="/auth/login" style={[styles.linkBase, dynamicStyles.link]}>
+                <Link href="/auth/login" replace style={[styles.linkBase, dynamicStyles.link]}>
                     Already have an account? Login
                 </Link>
+
+                {/* <Pressable onPress={() => router.replace('/auth/login')} style={[styles.linkBase]}>
+                    <Text>Already have an account? Login</Text>
+                </Pressable> */}
+
             </ScrollView>
         </KeyboardAvoidingView>
     );
