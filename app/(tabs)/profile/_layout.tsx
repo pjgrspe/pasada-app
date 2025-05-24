@@ -17,11 +17,8 @@ export default function ProfileLayout() {
                 // --------------------------
             }}
         >
-            <Stack.Screen name="index" options={{ title: 'My Profile' }} />
+            <Stack.Screen name="index" options={{ title: 'Profile & Settings' }} /> {/* Updated Title */}
             <Stack.Screen name="edit" options={{ title: 'Edit Profile' }} />
-            {/* If settings & notifications were here, they'd be: */}
-            {/* <Stack.Screen name="settings" options={{ title: 'Settings' }} /> */}
-            {/* <Stack.Screen name="notifications" options={{ title: 'Notifications' }} /> */}
         </Stack>
     );
 }
