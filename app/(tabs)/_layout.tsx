@@ -1,11 +1,17 @@
-// app/(tabs)/_layout.tsx
+// Modify: app/(tabs)/_layout.tsx
+// Add header options for the 'index' (Plan & Map) screen.
 import React from 'react';
-import { Tabs } from 'expo-router';
+import { Tabs, useRouter } from 'expo-router'; // Import useRouter
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../hooks/useTheme';
+import ScreenHeader from '../../components/ScreenHeader'; // Import ScreenHeader
+// import { TouchableOpacity } from 'react-native'; // No longer needed here
+
+const logo = require('../../assets/images/favicon.png'); // Use your actual logo path
 
 export default function TabLayout() {
     const { colors, isDarkMode } = useTheme();
+    const router = useRouter(); // Get router instance
 
     return (
         <Tabs
@@ -20,7 +26,6 @@ export default function TabLayout() {
                 },
                 tabBarActiveTintColor: colors.tabBarActive,
                 tabBarInactiveTintColor: colors.tabBarInactive,
-                headerShown: false, // Keep false as inner stacks will handle headers
                 tabBarStyle: {
                     backgroundColor: colors.tabBar,
                     borderTopColor: colors.border,
@@ -28,10 +33,42 @@ export default function TabLayout() {
                 }
             })}
         >
-            <Tabs.Screen name="index" options={{ title: 'Plan & Map' }} />
-            <Tabs.Screen name="trips" options={{ title: 'Trips' }} />
-            <Tabs.Screen name="notifications" options={{ title: 'Notifications' }} />
-            <Tabs.Screen name="profile" options={{ title: 'Profile' }} />
+            <Tabs.Screen
+                name="index"
+                options={{
+                    title: 'EmpowerJob', // Tab bar title
+                    header: () => (
+                        <ScreenHeader
+                            title="EmpowerJob" // Header title
+                            showLogo={true} // Set to true to show the logo
+                            logoSource={logo} // Pass the imported logo source
+                            rightIconName="notifications-outline"
+                            onRightIconPress={() => router.push('/(tabs)/notifications')}
+                        />
+                    ),
+                }}
+            />
+            <Tabs.Screen
+                name="trips"
+                options={{
+                    title: 'Trips',
+                    headerShown: false, // This layout is handled by app/(tabs)/trips/_layout.tsx
+                }}
+            />
+             <Tabs.Screen
+                name="notifications"
+                options={{
+                    title: 'Notifications',
+                     headerShown: false, // This layout is handled by app/(tabs)/notifications/_layout.tsx
+                }}
+            />
+            <Tabs.Screen
+                name="profile"
+                options={{
+                    title: 'Profile',
+                    headerShown: false, // This layout is handled by app/(tabs)/profile/_layout.tsx
+                }}
+            />
         </Tabs>
     );
 }

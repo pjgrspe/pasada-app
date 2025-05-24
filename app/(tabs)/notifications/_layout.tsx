@@ -1,32 +1,21 @@
-// app/(tabs)/notifications/_layout.tsx
+// Modify: pasada-app/app/(tabs)/notifications/_layout.tsx
 import React from 'react';
 import { Stack } from 'expo-router';
-import { useTheme } from '../../../hooks/useTheme';
+import ScreenHeader from '../../../components/ScreenHeader'; // Import the new header
 
 export default function NotificationsLayout() {
-    const { colors } = useTheme();
     return (
-        <Stack
-            screenOptions={{
-                headerStyle: { backgroundColor: colors.header },
-                headerTintColor: colors.headerText,
-                headerTitleStyle: {
-                    fontWeight: 'bold',
-                },
-            }}
-        >
+        <Stack>
             <Stack.Screen
                 name="index"
                 options={{
-                    title: 'All Notifications',
-                    headerShown: true, // Show header for the list
+                     header: () => <ScreenHeader title="All Notifications" />,
                 }}
             />
             <Stack.Screen
                 name="[id]"
                 options={{
-                    title: 'Notification Details',
-                    headerShown: true, // Show header for details
+                    header: () => <ScreenHeader title="Notification Details" showBackButton={true} />,
                 }}
             />
         </Stack>
