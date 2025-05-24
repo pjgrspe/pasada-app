@@ -1,60 +1,73 @@
-import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
-import 'react-native-reanimated';
+// app/_layout.tsx
+import React, { useEffect } from 'react';
+import { Stack, useRouter, useSegments } from 'expo-router';
+import { ActivityIndicator, View, StyleSheet } from 'react-native';
+import { ThemeProvider } from '@react-navigation/native';
+import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth'; // Import onAuthStateChanged and FirebaseUser
+import { useTheme } from '../hooks/useTheme';
+import { AppLightTheme, AppDarkTheme } from '../utils/navigationThemes';
+import { useAuthStore } from '../modules/auth/store/useAuthStore'; // Import directly for listener setup
+import { auth as firebaseAuth } from '../FirebaseConfig'; // Import Firebase auth instance
 
-import { useColorScheme } from '@/components/useColorScheme';
+export default function GlobalLayout() {
+    const { isAuthenticated, isInitialized, _setUser } = useAuthStore(); // Get _setUser from the store
+    const segments = useSegments();
+    const router = useRouter();
+    const { activeTheme } = useTheme();
 
-export {
-  // Catch any errors thrown by the Layout component.
-  ErrorBoundary,
-} from 'expo-router';
+    useEffect(() => {
+        // Subscribe to Firebase auth state changes
+        const unsubscribe = onAuthStateChanged(firebaseAuth, (firebaseUser: FirebaseUser | null) => {
+            console.log("Auth state changed, Firebase user:", firebaseUser?.email || null);
+            _setUser(firebaseUser); // Update the store with the new user state
+        });
 
-export const unstable_settings = {
-  // Ensure that reloading on `/modal` keeps a back button present.
-  initialRouteName: '(tabs)',
-};
+        return () => unsubscribe(); // Cleanup subscription on unmount
+    }, [_setUser]); // _setUser is stable, so this effect runs once on mount
 
-// Prevent the splash screen from auto-hiding before asset loading is complete.
-SplashScreen.preventAutoHideAsync();
+    useEffect(() => {
+        if (!isInitialized) {
+            console.log("Auth not initialized yet by onAuthStateChanged, waiting...");
+            return;
+        }
 
-export default function RootLayout() {
-  const [loaded, error] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
-    ...FontAwesome.font,
-  });
+        const inAuthGroup = segments[0] === 'auth';
+        console.log(`Auth Initialized: ${isInitialized}, Authenticated: ${isAuthenticated}, In Auth Group: ${inAuthGroup}`);
 
-  // Expo Router uses Error Boundaries to catch errors in the navigation tree.
-  useEffect(() => {
-    if (error) throw error;
-  }, [error]);
+        if (!isAuthenticated && !inAuthGroup) {
+            console.log("Redirecting to /auth/login");
+            router.replace('/auth/login');
+        } else if (isAuthenticated && inAuthGroup) {
+            console.log("Redirecting to /(tabs)");
+            router.replace('/(tabs)');
+        }
+    }, [isAuthenticated, isInitialized, segments, router]);
 
-  useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync();
+    if (!isInitialized) {
+        return (
+            <View style={styles.loaderContainer}>
+                <ActivityIndicator size="large" color="#FF8C00" />
+            </View>
+        );
     }
-  }, [loaded]);
 
-  if (!loaded) {
-    return null;
-  }
-
-  return <RootLayoutNav />;
+    return (
+        <ThemeProvider value={activeTheme === 'dark' ? AppDarkTheme : AppLightTheme}>
+            <Stack>
+                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                <Stack.Screen name="auth" options={{ headerShown: false }} />
+                {/* Add other global screens here if any, e.g., a modal */}
+                {/* <Stack.Screen name="modal" options={{ presentation: 'modal' }} /> */}
+            </Stack>
+        </ThemeProvider>
+    );
 }
 
-function RootLayoutNav() {
-  const colorScheme = useColorScheme();
-
-  return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="index" options={{ headerShown: false }} />
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-      </Stack>
-    </ThemeProvider>
-  );
-}
+const styles = StyleSheet.create({
+    loaderContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: '#1C1C1E',
+    },
+});
