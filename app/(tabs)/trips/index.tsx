@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '../../../hooks/useTheme';
-import { useTripStore, Trip } from '../../../store/useTripStore';
+import { useTripStore, Trip } from '../../../modules/map/store/useTripStore';
 import Loader from '../../../components/Loader';
 import Icon from 'react-native-vector-icons/Ionicons';
 

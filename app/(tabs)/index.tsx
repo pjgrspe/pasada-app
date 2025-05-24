@@ -20,7 +20,9 @@ import mapApiService from '../../modules/map/services/mapApiServices';
 import { regionFromCoordinates } from '../../modules/map/utils/mapHelpers';
 // Store Imports
 import { useTheme } from '../../hooks/useTheme';
-import { useTripStore } from '../../store/useTripStore';
+import { useTripStore } from '../../modules/map/store/useTripStore';
+
+import { gMapsApiKey } from '@/APIkeys';
 
 const initialMapRegion = {
     latitude: 14.8433,
@@ -217,6 +219,7 @@ export default function DashboardScreen() {
                         </TouchableOpacity>
                         <TouchableOpacity style={[styles.settingsButtonBase, dynamicStyles.settingsButton]}>
                             <Ionicons name="options-outline" size={22} color={'#FFFFFF'} />
+
                         </TouchableOpacity>
                     </View>
                 </View>
