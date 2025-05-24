@@ -23,6 +23,13 @@ const mapFirebaseUser = (user: FirebaseUser): AppUser => ({
     displayName: user.displayName,
 });
 
+// Define the type for profile update data
+interface ProfileUpdateData {
+    displayName?: string;
+    photoURL?: string;
+}
+
+
 const authService = {
   login: async (data: LoginData): Promise<AppUser> => {
     try {
@@ -59,7 +66,25 @@ const authService = {
   // We'll use onAuthStateChanged in the store, but you could have a getCurrentUser here
   getCurrentUser: (): FirebaseUser | null => {
       return auth.currentUser;
+  },
+
+  // New function to update user profile
+  updateUserProfileData: async (data: ProfileUpdateData): Promise<void> => {
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+        throw new Error("No user currently signed in to update profile.");
+    }
+    try {
+        await updateProfile(currentUser, data);
+        // After updating, Firebase's onAuthStateChanged listener (in _layout.tsx)
+        // should ideally pick up the changes and update the Zustand store.
+        // Or, the caller can manually refresh the user state in the store.
+    } catch (error: any) {
+        console.error("Firebase Update Profile Error:", error.code, error.message);
+        throw new Error(error.message || 'Failed to update profile.');
+    }
   }
 };
 
+export { mapFirebaseUser }; // Export mapFirebaseUser if needed elsewhere
 export default authService;
