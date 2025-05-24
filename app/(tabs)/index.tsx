@@ -22,7 +22,7 @@ import { regionFromCoordinates } from '../../modules/map/utils/mapHelpers';
 import { useTheme } from '../../hooks/useTheme';
 import { useTripStore } from '../../modules/map/store/useTripStore';
 
-import { gMapsApiKey } from '@/APIkeys';
+import { gMapsApiKey } from '@/APIKeys';
 
 const initialMapRegion = {
     latitude: 14.8433,
