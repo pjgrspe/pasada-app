@@ -2,63 +2,46 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
-import MapView, { Polyline, PROVIDER_GOOGLE, Marker } from 'react-native-maps'; // Added Marker!
-import { useTheme } from '../../../hooks/useTheme'; // Import useTheme
-import { darkMapStyle } from '../../../utils/mapStyles'; // Import map styles
-import MapPin from '../../../components/MapPin'; // Import MapPin
-import Loader from '../../../components/Loader'; // Import Loader
+import { Marker } from 'react-native-maps'; // Import Marker
 
-// Placeholder: Import your trip history map component and hook
-// import TripHistoryMap from '../../modules/trips/components/TripHistoryMap';
-// import { useTripDetails } from '../../modules/trips/hooks/useTripDetails';
+// New Map Module imports
+import MapViewComponent from '../../../modules/map/components/MapViewComponent';
+import RoutePolyline from '../../../modules/map/components/RoutePolyLine';
+import MapPin from '../../../modules/map/components/MapPin';
+import { regionFromCoordinates } from '../../../modules/map/utils/mapHelpers';
+
+import { useTheme } from '../../../hooks/useTheme';
+import Loader from '../../../components/Loader';
+import { useTripStore } from '../../../store/useTripStore';
 
 const TripDetailsScreen = () => {
     const { id } = useLocalSearchParams<{ id: string }>();
-    const { colors, isDarkMode } = useTheme(); // Use theme
-    // const { trip, isLoading, error } = useTripDetails(id);
+    const { colors } = useTheme();
+    const { trips, isLoading: tripsIsLoading } = useTripStore();
 
-    // Placeholder data
-    const trip = {
-        id: id,
-        date: '2025-05-23',
-        start: 'Home (Malolos)',
-        end: 'Work (QC)',
-        distance: '45 km',
-        duration: '1h 30m',
-        routeCoordinates: [ // Example route
-            { latitude: 14.8433, longitude: 120.8134 },
-            { latitude: 14.80, longitude: 120.90 },
-            { latitude: 14.6760, longitude: 121.0437 },
-        ],
-    };
-    const isLoading = false;
+    const trip = trips.find(t => t.id === id);
     const error = null;
 
     const dynamicStyles = StyleSheet.create({
         container: { backgroundColor: colors.background },
         title: { color: colors.text },
-        mapContainer: { backgroundColor: isDarkMode ? colors.card : '#e0e0e0' },
-        detailsContainer: { /* No specific theme needed here unless adding bg */ },
+        mapContainer: { backgroundColor: colors.card, shadowColor: colors.text, },
+        detailsContainer: { },
         detailText: { color: colors.text },
         centered: { backgroundColor: colors.background },
         errorText: { color: colors.error },
     });
 
-    if (isLoading) {
+    if (tripsIsLoading && !trip) {
         return <View style={[styles.centered, dynamicStyles.centered]}><Loader text="Loading trip details..." /></View>;
     }
 
     if (error || !trip) {
-        return <View style={[styles.centered, dynamicStyles.centered]}><Text style={dynamicStyles.errorText}>Error loading trip or trip not found.</Text></View>;
+        return <View style={[styles.centered, dynamicStyles.centered]}><Text style={dynamicStyles.errorText}>Error: Trip not found.</Text></View>;
     }
 
-    const initialRegion = trip.routeCoordinates.length > 0
-        ? {
-            latitude: trip.routeCoordinates[0].latitude,
-            longitude: trip.routeCoordinates[0].longitude,
-            latitudeDelta: 0.5, // Adjust as needed
-            longitudeDelta: 0.5, // Adjust as needed
-          }
+    const initialRegion = trip.routeCoordinates && trip.routeCoordinates.length > 0
+        ? regionFromCoordinates(trip.routeCoordinates, 0.2)
         : {
             latitude: 14.8433,
             longitude: 120.8134,
@@ -68,39 +51,36 @@ const TripDetailsScreen = () => {
 
     return (
         <ScrollView style={[styles.container, dynamicStyles.container]}>
-            <Text style={[styles.title, dynamicStyles.title]}>Trip Details: {trip.id}</Text>
+            <Text style={[styles.title, dynamicStyles.title]}>
+                Trip: {trip.startLocation} to {trip.endLocation}
+            </Text>
 
             <View style={[styles.mapContainer, dynamicStyles.mapContainer]}>
-                 <MapView
-                    style={styles.map}
+                 <MapViewComponent
                     initialRegion={initialRegion}
-                    provider={PROVIDER_GOOGLE}
-                    customMapStyle={isDarkMode ? darkMapStyle : []}
                 >
-                  {/* Add Start/End Markers */}
-                  {trip.routeCoordinates.length > 0 && (
+                  {trip.routeCoordinates && trip.routeCoordinates.length > 0 && (
                       <>
-                            <Marker coordinate={trip.routeCoordinates[0]}>
+                            {/* Corrected Usage for start and end pins */}
+                            <Marker coordinate={trip.routeCoordinates[0]} title="Start">
                                 <MapPin type="start" />
                             </Marker>
-                            <Marker coordinate={trip.routeCoordinates[trip.routeCoordinates.length - 1]}>
+                            <Marker coordinate={trip.routeCoordinates[trip.routeCoordinates.length - 1]} title="End">
                                 <MapPin type="end" />
                             </Marker>
-                          <Polyline
-                              coordinates={trip.routeCoordinates}
-                              strokeColor={colors.primary} // Use theme color for route
-                              strokeWidth={5}
-                          />
+                            <RoutePolyline coordinates={trip.routeCoordinates} />
                       </>
                   )}
-                 </MapView>
+                 </MapViewComponent>
             </View>
 
 
             <View style={styles.detailsContainer}>
+                <Text style={[styles.detailText, dynamicStyles.detailText]}>ID: {trip.id}</Text>
                 <Text style={[styles.detailText, dynamicStyles.detailText]}>Date: {trip.date}</Text>
-                <Text style={[styles.detailText, dynamicStyles.detailText]}>From: {trip.start}</Text>
-                <Text style={[styles.detailText, dynamicStyles.detailText]}>To: {trip.end}</Text>
+                <Text style={[styles.detailText, dynamicStyles.detailText]}>Time: {trip.startTime} - {trip.endTime}</Text>
+                <Text style={[styles.detailText, dynamicStyles.detailText]}>From: {trip.startLocation}</Text>
+                <Text style={[styles.detailText, dynamicStyles.detailText]}>To: {trip.endLocation}</Text>
                 <Text style={[styles.detailText, dynamicStyles.detailText]}>Distance: {trip.distance}</Text>
                 <Text style={[styles.detailText, dynamicStyles.detailText]}>Duration: {trip.duration}</Text>
             </View>
@@ -118,20 +98,25 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     title: {
-        fontSize: 22,
+        fontSize: 20,
         fontWeight: 'bold',
-        padding: 20,
+        paddingHorizontal: 20,
+        paddingTop: 20,
+        paddingBottom: 15,
         textAlign: 'center',
     },
     mapContainer: {
-        height: 350, // Increased height
-        marginHorizontal: 15, // Adjusted margin
-        borderRadius: 10,
+        height: 300,
+        marginHorizontal: 15,
+        borderRadius: 12,
         overflow: 'hidden',
         marginBottom: 20,
-    },
-    map: {
-        ...StyleSheet.absoluteFillObject,
+        borderWidth: 1,
+        borderColor: '#ddd',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 3,
+        elevation: 2,
     },
     detailsContainer: {
         paddingHorizontal: 20,
@@ -139,7 +124,7 @@ const styles = StyleSheet.create({
     },
     detailText: {
         fontSize: 16,
-        marginBottom: 12,
+        marginBottom: 10,
     },
 });
 
