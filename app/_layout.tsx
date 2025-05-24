@@ -1,60 +1,92 @@
-import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
-import 'react-native-reanimated';
+// app/_layout.tsx
+import React, { useEffect } from 'react';
+import { Stack, useRouter, useSegments, useRootNavigationState } from 'expo-router';
+import { ActivityIndicator, View, StyleSheet } from 'react-native';
+import { ThemeProvider } from '@react-navigation/native';
+import { useTheme } from '../hooks/useTheme';
+import { AppLightTheme, AppDarkTheme } from '../utils/navigationThemes';
+import { useAuthStore } from '../modules/auth/store/useAuthStore'; // Import the store directly
+import { onAuthStateChanged } from 'firebase/auth'; // Import onAuthStateChanged
+import { auth } from '../FirebaseConfig'; // Import initialized auth
+import { useTripStore } from '../store/useTripStore'; // Ensure this import is correct
 
-import { useColorScheme } from '@/components/useColorScheme';
+export default function GlobalLayout() {
+    const { isAuthenticated, isInitialized: authIsInitialized, _setUser } = useAuthStore();
+    const segments = useSegments();
+    const router = useRouter();
+    const { activeTheme, colors } = useTheme(); // Added colors for loader
+    const navigationState = useRootNavigationState();
 
-export {
-  // Catch any errors thrown by the Layout component.
-  ErrorBoundary,
-} from 'expo-router';
+    // Firebase Auth Listener
+    useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, (fbUser) => {
+            console.log("Auth Listener: User state changed:", fbUser?.email || null);
+            _setUser(fbUser);
+        });
+        return () => unsubscribe();
+    }, [_setUser]);
 
-export const unstable_settings = {
-  // Ensure that reloading on `/modal` keeps a back button present.
-  initialRouteName: '(tabs)',
-};
+    // Trip Store Initializer
+    useEffect(() => {
+        // Ensure useTripStore is defined before trying to access getState or its properties.
+        // This check helps prevent the "Cannot read property 'getState' of undefined" error.
+        if (useTripStore) {
+            const tripStoreState = useTripStore.getState();
+            if (tripStoreState.trips.length === 0 && !tripStoreState.isLoading) {
+                console.log("GlobalLayout: Fetching initial trips.");
+                tripStoreState.fetchTrips();
+            }
+        } else {
+            console.error("GlobalLayout: useTripStore is undefined. Check import or initialization order.");
+        }
+    }, []); // Runs once on mount
 
-// Prevent the splash screen from auto-hiding before asset loading is complete.
-SplashScreen.preventAutoHideAsync();
+    // Routing Logic
+    useEffect(() => {
+        if (!authIsInitialized || !navigationState?.key) {
+             console.log("Routing: Waiting for auth and/or router to be ready...");
+             return;
+        }
 
-export default function RootLayout() {
-  const [loaded, error] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
-    ...FontAwesome.font,
-  });
+        const inAuthGroup = segments[0] === 'auth';
+        // console.log(`Routing: Auth Initialized: ${authIsInitialized}, Authenticated: ${isAuthenticated}, In Auth Group: ${inAuthGroup}, Segments: ${segments.join('/')}`);
 
-  // Expo Router uses Error Boundaries to catch errors in the navigation tree.
-  useEffect(() => {
-    if (error) throw error;
-  }, [error]);
+        if (!isAuthenticated && !inAuthGroup) {
+            console.log("Routing: User not authenticated and not in auth group. Redirecting to /auth/login");
+            router.replace('/auth/login');
+        } else if (isAuthenticated && inAuthGroup) {
+            console.log("Routing: User authenticated and in auth group. Redirecting to /(tabs)");
+            router.replace('/(tabs)');
+        } else {
+            // console.log("Routing: No redirection needed based on current state.");
+        }
+    }, [isAuthenticated, authIsInitialized, segments, router, navigationState?.key]);
 
-  useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync();
+    // Initial Loading screen for auth
+    if (!authIsInitialized) {
+        console.log("GlobalLayout: Auth not initialized, showing loader.");
+        return (
+            <View style={[styles.loaderContainer, { backgroundColor: colors.background }]}>
+                <ActivityIndicator size="large" color={colors.primary} />
+            </View>
+        );
     }
-  }, [loaded]);
 
-  if (!loaded) {
-    return null;
-  }
-
-  return <RootLayoutNav />;
+    return (
+        <ThemeProvider value={activeTheme === 'dark' ? AppDarkTheme : AppLightTheme}>
+            <Stack>
+                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                <Stack.Screen name="auth" options={{ headerShown: false }} />
+            </Stack>
+        </ThemeProvider>
+    );
 }
 
-function RootLayoutNav() {
-  const colorScheme = useColorScheme();
-
-  return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="index" options={{ headerShown: false }} />
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-      </Stack>
-    </ThemeProvider>
-  );
-}
+const styles = StyleSheet.create({
+    loaderContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: '#1C1C1E',
+    },
+});
