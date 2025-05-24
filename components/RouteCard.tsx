@@ -2,6 +2,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, StyleProp, ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../hooks/useTheme'; // Import useTheme
 
 interface RouteCardProps {
   startTime: string;
@@ -20,16 +21,27 @@ const RouteCard: React.FC<RouteCardProps> = ({
   onPress,
   style,
 }) => {
+  const { colors } = useTheme(); // Get themed colors
+
   return (
-    <TouchableOpacity style={[styles.routeCard, style]} onPress={onPress} activeOpacity={0.8}>
-      <Text style={styles.routeTime}>{startTime} - {endTime}</Text>
+    <TouchableOpacity
+      style={[
+        styles.routeCardBase,
+        { backgroundColor: colors.routeCard }, // Themed background
+        style,
+      ]}
+      onPress={onPress}
+      activeOpacity={0.8}
+    >
+      <Text style={[styles.routeTime, { color: colors.text, opacity: 0.7 }]}>{startTime} - {endTime}</Text>
       <View style={styles.routeDetails}>
         <View style={styles.locations}>
-          <Text style={styles.routeLocation} numberOfLines={1}>{startLocation}</Text>
-          <Text style={styles.routeLocation} numberOfLines={1}>{endLocation}</Text>
+          <Text style={[styles.routeLocation, { color: colors.text }]} numberOfLines={1}>{startLocation}</Text>
+          <Text style={[styles.routeLocation, { color: colors.text }]} numberOfLines={1}>{endLocation}</Text>
         </View>
-        <View style={styles.routeArrow}>
-          <Ionicons name="arrow-forward" size={20} color="#FFF" />
+        <View style={[styles.routeArrow, { backgroundColor: colors.primary }]}>
+          {/* Assuming white icon contrasts well with primary color */}
+          <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
         </View>
       </View>
     </TouchableOpacity>
@@ -37,20 +49,18 @@ const RouteCard: React.FC<RouteCardProps> = ({
 };
 
 const styles = StyleSheet.create({
-  routeCard: {
-    backgroundColor: '#2C2C2E', // Dark card
+  routeCardBase: { // Renamed to indicate it's a base style
     padding: 15,
     borderRadius: 15,
     width: 250,
-    marginRight: 15, // Default margin, can be overridden by style
-    shadowColor: '#000',
+    marginRight: 15,
+    shadowColor: '#000', // Shadow color can often remain black or be themed if desired
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.1, // Adjusted for potentially lighter cards in light mode
     shadowRadius: 3,
-    elevation: 3,
+    elevation: 2, // Adjusted elevation
   },
   routeTime: {
-    color: '#AAA',
     fontSize: 14,
     marginBottom: 10,
   },
@@ -60,16 +70,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   locations: {
-      flex: 1, // Allow text to take space but be limited by container
-      marginRight: 10,
+    flex: 1,
+    marginRight: 10,
   },
   routeLocation: {
-    color: '#FFF',
     fontSize: 15,
     marginBottom: 3,
+    fontWeight: '500', // Slightly bolder for better readability
   },
   routeArrow: {
-    backgroundColor: '#FF8C00',
     padding: 8,
     borderRadius: 15,
   },

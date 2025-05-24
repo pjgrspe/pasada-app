@@ -1,6 +1,7 @@
 // components/Button.tsx
 import React from 'react';
 import { TouchableOpacity, Text, StyleSheet, ViewStyle, TextStyle } from 'react-native';
+import { useTheme } from '../hooks/useTheme'; // Added
 
 interface ButtonProps {
   title: string;
@@ -19,42 +20,47 @@ const Button: React.FC<ButtonProps> = ({
   textStyle,
   disabled = false,
 }) => {
+  const { colors } = useTheme(); // Added
+
   const getButtonStyles = () => {
     switch (variant) {
       case 'secondary':
-        return styles.secondaryButton;
+        return { backgroundColor: colors.card, borderColor: colors.primary, borderWidth: 1.5 };
       case 'dark':
-        return styles.darkButton;
-       case 'danger':
-        return styles.dangerButton;
+        return { backgroundColor: colors.secondary }; // Example: using theme's secondary for "dark" variant
+      case 'danger':
+        return { backgroundColor: colors.error };
       case 'primary':
       default:
-        return styles.primaryButton;
+        return { backgroundColor: colors.primary };
     }
   };
 
   const getTextStyles = () => {
     switch (variant) {
       case 'secondary':
-        return styles.secondaryText;
+        return { color: colors.primary };
       case 'dark':
-         return styles.darkText;
+         return { color: colors.headerText }; // Text color suitable for secondary bg
        case 'danger':
-         return styles.dangerText;
+         return { color: '#FFFFFF' }; // White text is common on danger color
       case 'primary':
       default:
-        return styles.primaryText;
+        // Assuming primary button text color should contrast with colors.primary
+        // This might be white or a very dark color depending on your primary color's brightness
+        // For FF8C00 (Orange), white is good.
+        return { color: '#FFFFFF' };
     }
   };
 
-  const buttonStyle = getButtonStyles();
-  const TxtStyle = getTextStyles();
+  const buttonVariantStyle = getButtonStyles();
+  const textVariantStyle = getTextStyles();
 
   return (
     <TouchableOpacity
       style={[
         styles.baseButton,
-        buttonStyle,
+        buttonVariantStyle,
         style,
         disabled && styles.disabled,
       ]}
@@ -62,7 +68,7 @@ const Button: React.FC<ButtonProps> = ({
       disabled={disabled}
       activeOpacity={0.7}
     >
-      <Text style={[styles.baseText, TxtStyle, textStyle]}>{title}</Text>
+      <Text style={[styles.baseText, textVariantStyle, textStyle]}>{title}</Text>
     </TouchableOpacity>
   );
 };
@@ -81,32 +87,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
   },
-  primaryButton: {
-    backgroundColor: '#FF8C00', // Orange
-  },
-  primaryText: {
-    color: '#FFFFFF',
-  },
-  secondaryButton: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1.5,
-    borderColor: '#FF8C00',
-  },
-  secondaryText: {
-    color: '#FF8C00',
-  },
-  darkButton: {
-     backgroundColor: '#2C2C2E', // Dark Grey
-  },
-  darkText: {
-      color: '#FFFFFF',
-  },
-   dangerButton: {
-      backgroundColor: '#DC3545', // Red
-   },
-   dangerText: {
-      color: '#FFFFFF',
-   },
   disabled: {
     opacity: 0.5,
   },
