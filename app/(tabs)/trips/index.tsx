@@ -4,7 +4,7 @@ import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native
 import { Link, useRouter } from 'expo-router';
 import Loader from '../../../components/Loader';
 import { useTheme } from '../../../hooks/useTheme'; // Import useTheme
-import { useTripStore, Trip } from '../../../store/useTripStore'; // Import Trip Store & Trip Type
+import { useTripStore, Trip } from '../../../modules/map/store/useTripStore'; // Import Trip Store & Trip Type
 
 
 // Updated TripListItem to use theme

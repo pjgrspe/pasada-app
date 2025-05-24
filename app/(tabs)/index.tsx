@@ -25,7 +25,9 @@ import { regionFromCoordinates } from '../../modules/map/utils/mapHelpers';
 
 
 import { useTheme } from '../../hooks/useTheme';
-import { useTripStore } from '../../store/useTripStore';
+import { useTripStore } from '../../modules/map/store/useTripStore';
+
+import { gMapsApiKey } from '@/APIkeys';
 
 const initialMapRegion = { // Default or last known region
     latitude: 14.8433, // Malolos
@@ -250,8 +252,8 @@ export default function DashboardScreen() {
                                     description={marker.description}
                                     pinColor={marker.pinColor} // Works with default marker, or use MapPin for custom
                                 >
-                                   {/* Example: Use MapPin for route points, CarMarker for others */}
-                                   {(marker.id === 'startPoint' || marker.id === 'destinationPoint') ?
+                                    {/* Example: Use MapPin for route points, CarMarker for others */}
+                                    {(marker.id === 'startPoint' || marker.id === 'destinationPoint') ?
                                         <MapPin type={marker.id === 'startPoint' ? 'start' : 'end'} size={36}/>
                                         : <CarMarker coordinate={marker.coordinate} carName={marker.title} />
                                     }

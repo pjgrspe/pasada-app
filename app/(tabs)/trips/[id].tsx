@@ -12,7 +12,7 @@ import { regionFromCoordinates } from '../../../modules/map/utils/mapHelpers';
 
 import { useTheme } from '../../../hooks/useTheme';
 import Loader from '../../../components/Loader';
-import { useTripStore } from '../../../store/useTripStore';
+import { useTripStore } from '../../../modules/map/store/useTripStore';
 
 const TripDetailsScreen = () => {
     const { id } = useLocalSearchParams<{ id: string }>();
