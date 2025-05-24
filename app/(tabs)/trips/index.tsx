@@ -12,6 +12,8 @@ import { useRouter } from 'expo-router';
 import { useTheme } from '../../../hooks/useTheme';
 import { useTripStore, Trip } from '../../../store/useTripStore';
 import Loader from '../../../components/Loader';
+import { useTheme } from '../../../hooks/useTheme'; // Import useTheme
+import { useTripStore, Trip } from '../../../modules/map/store/useTripStore'; // Import Trip Store & Trip Type
 import Icon from 'react-native-vector-icons/Ionicons';
 
 const TripListItem = ({ item }: { item: Trip }) => {
