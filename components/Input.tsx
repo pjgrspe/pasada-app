@@ -10,20 +10,16 @@ interface InputProps extends TextInputProps {
 }
 
 const Input: React.FC<InputProps> = ({ containerStyle, iconName, iconColor = '#888', style, ...props }) => {
-  const [isFocused, setIsFocused] = useState(false);
 
   return (
     <View style={[
       styles.inputContainer,
       containerStyle,
-      isFocused && styles.inputContainerFocused // Apply focused style
     ]}>
       {iconName && <Ionicons name={iconName} size={20} color={iconColor} style={styles.icon} />}
       <TextInput
         style={[styles.inputField, style]}
         placeholderTextColor="#888"
-        onFocus={() => setIsFocused(true)}
-        onBlur={() => setIsFocused(false)}
         {...props}
       />
     </View>

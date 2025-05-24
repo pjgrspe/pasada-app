@@ -1,73 +1,52 @@
 // app/_layout.tsx
 import React, { useEffect } from 'react';
-import { Stack, useRouter, useSegments, useRootNavigationState } from 'expo-router';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import { ActivityIndicator, View, StyleSheet } from 'react-native';
 import { ThemeProvider } from '@react-navigation/native';
+import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth'; // Import onAuthStateChanged and FirebaseUser
 import { useTheme } from '../hooks/useTheme';
 import { AppLightTheme, AppDarkTheme } from '../utils/navigationThemes';
-import { useAuthStore } from '../modules/auth/store/useAuthStore'; // Import the store directly
-import { onAuthStateChanged } from 'firebase/auth'; // Import onAuthStateChanged
-import { auth } from '../FirebaseConfig'; // Import initialized auth
-import { useTripStore } from '../store/useTripStore'; // Ensure this import is correct
+import { useAuthStore } from '../modules/auth/store/useAuthStore'; // Import directly for listener setup
+import { auth as firebaseAuth } from '../FirebaseConfig'; // Import Firebase auth instance
 
 export default function GlobalLayout() {
-    const { isAuthenticated, isInitialized: authIsInitialized, _setUser } = useAuthStore();
+    const { isAuthenticated, isInitialized, _setUser } = useAuthStore(); // Get _setUser from the store
     const segments = useSegments();
     const router = useRouter();
-    const { activeTheme, colors } = useTheme(); // Added colors for loader
-    const navigationState = useRootNavigationState();
+    const { activeTheme } = useTheme();
 
-    // Firebase Auth Listener
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, (fbUser) => {
-            console.log("Auth Listener: User state changed:", fbUser?.email || null);
-            _setUser(fbUser);
+        // Subscribe to Firebase auth state changes
+        const unsubscribe = onAuthStateChanged(firebaseAuth, (firebaseUser: FirebaseUser | null) => {
+            console.log("Auth state changed, Firebase user:", firebaseUser?.email || null);
+            _setUser(firebaseUser); // Update the store with the new user state
         });
-        return () => unsubscribe();
-    }, [_setUser]);
 
-    // Trip Store Initializer
-    useEffect(() => {
-        // Ensure useTripStore is defined before trying to access getState or its properties.
-        // This check helps prevent the "Cannot read property 'getState' of undefined" error.
-        if (useTripStore) {
-            const tripStoreState = useTripStore.getState();
-            if (tripStoreState.trips.length === 0 && !tripStoreState.isLoading) {
-                console.log("GlobalLayout: Fetching initial trips.");
-                tripStoreState.fetchTrips();
-            }
-        } else {
-            console.error("GlobalLayout: useTripStore is undefined. Check import or initialization order.");
-        }
-    }, []); // Runs once on mount
+        return () => unsubscribe(); // Cleanup subscription on unmount
+    }, [_setUser]); // _setUser is stable, so this effect runs once on mount
 
-    // Routing Logic
     useEffect(() => {
-        if (!authIsInitialized || !navigationState?.key) {
-             console.log("Routing: Waiting for auth and/or router to be ready...");
-             return;
+        if (!isInitialized) {
+            console.log("Auth not initialized yet by onAuthStateChanged, waiting...");
+            return;
         }
 
         const inAuthGroup = segments[0] === 'auth';
-        // console.log(`Routing: Auth Initialized: ${authIsInitialized}, Authenticated: ${isAuthenticated}, In Auth Group: ${inAuthGroup}, Segments: ${segments.join('/')}`);
+        console.log(`Auth Initialized: ${isInitialized}, Authenticated: ${isAuthenticated}, In Auth Group: ${inAuthGroup}`);
 
         if (!isAuthenticated && !inAuthGroup) {
-            console.log("Routing: User not authenticated and not in auth group. Redirecting to /auth/login");
+            console.log("Redirecting to /auth/login");
             router.replace('/auth/login');
         } else if (isAuthenticated && inAuthGroup) {
-            console.log("Routing: User authenticated and in auth group. Redirecting to /(tabs)");
+            console.log("Redirecting to /(tabs)");
             router.replace('/(tabs)');
-        } else {
-            // console.log("Routing: No redirection needed based on current state.");
         }
-    }, [isAuthenticated, authIsInitialized, segments, router, navigationState?.key]);
+    }, [isAuthenticated, isInitialized, segments, router]);
 
-    // Initial Loading screen for auth
-    if (!authIsInitialized) {
-        console.log("GlobalLayout: Auth not initialized, showing loader.");
+    if (!isInitialized) {
         return (
-            <View style={[styles.loaderContainer, { backgroundColor: colors.background }]}>
-                <ActivityIndicator size="large" color={colors.primary} />
+            <View style={styles.loaderContainer}>
+                <ActivityIndicator size="large" color="#FF8C00" />
             </View>
         );
     }
@@ -77,6 +56,8 @@ export default function GlobalLayout() {
             <Stack>
                 <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
                 <Stack.Screen name="auth" options={{ headerShown: false }} />
+                {/* Add other global screens here if any, e.g., a modal */}
+                {/* <Stack.Screen name="modal" options={{ presentation: 'modal' }} /> */}
             </Stack>
         </ThemeProvider>
     );

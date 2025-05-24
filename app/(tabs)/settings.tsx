@@ -122,7 +122,7 @@ const SettingsScreen = () => {
                 <Button
                     title="About This App"
                     onPress={() => setIsModalVisible(true)}
-                    variant="secondary"
+                    variant="primary"
                     style={{ marginTop: 40 }}
                 />
 
