@@ -4,6 +4,7 @@ import { useMapStore, Route as MapRoute } from '../store/useMapStore';
 import mapApiService from '../services/mapApiServices';
 import { Coordinate, PlannedTripLeg } from '../utils/routeTypes';
 import { useTheme } from '@/hooks/useTheme';
+import { planTrip } from '../services/tripPlannerServices';
 // import { regionFromCoordinates } from '../utils/mapHelpers'; // Accessed via mapApiService
 
 export const useRouting = () => {
@@ -40,7 +41,7 @@ export const useRouting = () => {
     setDestinationPoint({ id: 'destinationPoint', coordinate: end, title: endMarkerTitle, pinColor: colors.error });
 
     try {
-      const tripOptions = await mapApiService.planTrip(start, end);
+      const tripOptions = await planTrip(start, end);
 
       if (tripOptions && tripOptions.length > 0) {
         const selectedTripLegs = tripOptions[0];

@@ -195,7 +195,7 @@ export default function DashboardScreen() {
             <View style={dynamicStyles.flexContainer}>
                 <View style={[styles.headerBar, dynamicStyles.headerBar]}>
                     <Text style={[styles.headerTitle, dynamicStyles.headerTitle]}>Plan & Map</Text>
-                    <TouchableOpacity onPress={() => router.push('/(tabs)/notifications')}>
+                    <TouchableOpacity onPress={() => router.push('../(tabs)/notifications')}>
                         <Ionicons name="notifications-outline" size={26} color={dynamicStyles.headerTitle.color} />
                     </TouchableOpacity>
                 </View>

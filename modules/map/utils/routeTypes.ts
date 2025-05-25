@@ -25,13 +25,15 @@ export interface PlannedTripLeg {
   routeName?: string;
   routeId?: string;
   routeColor?: string;
-  instructions?: string;
-  startAddress?: string;
-  endAddress?: string;
+  instructions: string; // Ensure this is always populated
+  startAddress?: string; // From Google Directions for walking legs
+  endAddress?: string;   // From Google Directions for walking legs
+  // Specific to jeepney legs for clearer instructions:
+  jeepBoardingPointInfo?: string; // e.g., "near [landmark/street from walking leg's endAddress]"
+  jeepAlightingPointInfo?: string; // e.g., "near [landmark/street from next walking leg's startAddress]"
 }
 
 // Interface for the Google Directions API response (simplified)
-// This can also live here or remain in mapApiServices if only used there.
 export interface GoogleDirectionsResponse {
   status: string;
   routes: Array<{
@@ -45,12 +47,13 @@ export interface GoogleDirectionsResponse {
       end_address: string;
       steps: Array<{
         html_instructions: string;
-        polyline: { points: string }; // Polyline for individual steps
+        polyline: { points: string };
         distance: { value: number };
         duration: { value: number };
       }>;
     }>;
-    // ... other properties
+    // error_message is typically at the root level of the response, not per route
   }>;
-  error_message?: string; // For debugging API errors
+  error_message?: string; // Corrected: Moved to root level
+  geocoded_waypoints?: any[]; // Other potential root level properties
 }
