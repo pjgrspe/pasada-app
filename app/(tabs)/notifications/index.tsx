@@ -2,7 +2,7 @@
 // The title "All Notifications" is now handled by the ScreenHeader in app/(tabs)/notifications/_layout.tsx
 // The SafeAreaView and header <Text> are removed.
 
-import React from 'react'; // Removed useState as it's not used
+import React, { useState } from 'react'; // Removed useState as it's not used
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Platform } from 'react-native'; // SafeAreaView removed
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../../hooks/useTheme';

@@ -1,5 +1,5 @@
 // pasada-gemini/modules/map/services/mapApiServices.ts
-import { gMapsApiKey } from '@/APIkeys';
+import { gMapsApiKey } from '@/APIKeys';
 import { regionFromCoordinates as mapRegionFromCoordinates } from '../utils/mapHelpers'; // Renamed import to avoid conflict
 import { Coordinate, GoogleDirectionsResponse, PlannedTripLeg } from '../utils/routeTypes'; // Import from new types file
 import { planTrip as planJeepneyTrip } from './tripPlannerServices'; // Import from new trip planning service
