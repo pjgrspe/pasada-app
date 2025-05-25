@@ -141,8 +141,6 @@ export default function DashboardScreen() {
 
     const dynamicStyles = StyleSheet.create({
         flexContainer: { backgroundColor: colors.background, flex: 1 },
-        headerBar: { backgroundColor: isDarkMode ? colors.card : '#FFD700', },
-        headerTitle: { color: isDarkMode ? colors.text : '#333' },
         planningContainer: { backgroundColor: colors.card, },
         mapInfoButton: { backgroundColor: colors.card },
         mapInfoIcon: { color: colors.text },
@@ -152,6 +150,12 @@ export default function DashboardScreen() {
         arrowIcon: { color: colors.text },
         inputStyle: { color: colors.text, backgroundColor: colors.inputBackground },
         inputContainer: { backgroundColor: colors.inputBackground, borderColor: colors.border },
+        timeButton: { backgroundColor: colors.secondary },
+        timeText: { color: colors.background },
+        settingsButton: { backgroundColor: colors.primary },
+        mapContainerBackground: { backgroundColor: colors.border },
+        loadingOverlayBackground: { backgroundColor: isDarkMode ? 'rgba(0,0,0,0.5)' : 'rgba(100,100,100,0.3)' },
+        noTripsText: { paddingHorizontal: 20, color: colors.text, opacity: 0.7 },
         instructionsContainer: {
             padding: 15,
             backgroundColor: colors.card,
@@ -193,13 +197,6 @@ export default function DashboardScreen() {
             keyboardVerticalOffset={Platform.OS === "ios" ? 64 : 0}
         >
             <View style={dynamicStyles.flexContainer}>
-                <View style={[styles.headerBar, dynamicStyles.headerBar]}>
-                    <Text style={[styles.headerTitle, dynamicStyles.headerTitle]}>Plan & Map</Text>
-                    <TouchableOpacity onPress={() => router.push('../(tabs)/notifications')}>
-                        <Ionicons name="notifications-outline" size={26} color={dynamicStyles.headerTitle.color} />
-                    </TouchableOpacity>
-                </View>
-
                 <ScrollView
                     style={dynamicStyles.flexContainer}
                     contentContainerStyle={styles.scrollContent}
@@ -218,7 +215,6 @@ export default function DashboardScreen() {
                             iconName="navigate-circle-outline"
                             style={dynamicStyles.inputContainer}
                         />
-                        <View style={styles.separatorLine}></View>
                         <SearchBar
                             placeholder="Where are you going?"
                             value={destinationQuery}
@@ -228,20 +224,21 @@ export default function DashboardScreen() {
                             style={dynamicStyles.inputContainer}
                         />
                         <View style={styles.optionsRow}>
-                             <TouchableOpacity style={styles.timeButton}>
-                                 <Ionicons name="time-outline" size={18} color="#FFF" />
-                                 <Text style={styles.timeText}>Now</Text>
-                             </TouchableOpacity>
-                             <TouchableOpacity style={styles.timeButton} onPress={handleClearAll}>
-                                 <Ionicons name="close-circle-outline" size={18} color="#FFF" />
-                                 <Text style={styles.timeText}>Clear</Text>
-                             </TouchableOpacity>
-                             <TouchableOpacity style={styles.modeButton}>
+                            <TouchableOpacity style={[styles.timeButtonBase, dynamicStyles.timeButton]}>
+                                <Ionicons name="time-outline" size={18} color={dynamicStyles.timeText.color} />
+                                <Text style={[styles.timeTextBase, dynamicStyles.timeText]}>Now</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={[styles.timeButtonBase, dynamicStyles.timeButton]} onPress={handleClearAll}>
+                                <Ionicons name="close-circle-outline" size={18} color={dynamicStyles.timeText.color} />
+                                <Text style={[styles.timeTextBase, dynamicStyles.timeText]}>Clear</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={[styles.modeButtonBase, { backgroundColor: colors.secondary }]}>
                                 <Ionicons name="car-sport-outline" size={22} color={colors.text} />
-                             </TouchableOpacity>
-                             <TouchableOpacity style={styles.settingsButton}>
-                                <Ionicons name="options-outline" size={22} color={colors.text} />
-                             </TouchableOpacity>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={[styles.settingsButtonBase, dynamicStyles.settingsButton]}>
+                                <Ionicons name="options-outline" size={22} color={'#FFFFFF'} />
+                            </TouchableOpacity>
+
                         </View>
                     </View>
 
@@ -347,15 +344,6 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
     flexContainer: { flex: 1 },
     scrollContent: { paddingBottom: 20, flexGrow: 1 },
-    headerBar: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingHorizontal: 20,
-        paddingTop: Platform.OS === 'android' ? 30 : 50,
-        paddingBottom: 10
-    },
-    headerTitle: { fontSize: 20, fontWeight: 'bold' },
     planningContainer: {
         marginHorizontal: 20,
         marginTop: 10,
@@ -368,18 +356,28 @@ const styles = StyleSheet.create({
         shadowRadius: 3,
         elevation: 3,
     },
-    separatorLine: { height: 1, backgroundColor: '#4A4A4C', marginVertical: 8 },
-    optionsRow: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', marginTop: 15 },
-    timeButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#4A4A4C', paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20 },
-    timeText: { color: '#FFF', marginLeft: 5, fontSize: 14 },
-    modeButton: { backgroundColor: '#4A4A4C', padding: 8, borderRadius: 20 },
-    settingsButton: { backgroundColor: '#FF8C00', padding: 10, borderRadius: 10 },
-    mapContainer: {
-        height: 300,
+    optionsRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between', // Use space-between for better distribution
+        alignItems: 'center',
+        marginTop: 15,
+    },    
+    timeButtonBase: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 15,
+        paddingVertical: 8,
+        borderRadius: 20,
+        marginRight: 5, // Add some margin between buttons
+    },
+    timeTextBase: { marginLeft: 5, fontSize: 14 },
+    modeButtonBase: { padding: 8, borderRadius: 20 },
+    settingsButtonBase: { padding: 10, borderRadius: 10 },
+     mapContainer: {
+        height: 350,
         marginHorizontal: 20,
         borderRadius: 15,
         overflow: 'hidden',
-        backgroundColor: '#E0E0E0',
         position: 'relative',
         marginTop: 10,
     },
@@ -402,12 +400,14 @@ const styles = StyleSheet.create({
         marginBottom: 15
     },
     previousTitle: { fontSize: 18, fontWeight: 'bold' },
-    arrowButton: { padding: 8, borderRadius: 15, },
+    arrowButton: { padding: 8, borderRadius: 15 },
     loadingOverlay: {
         ...StyleSheet.absoluteFillObject,
         backgroundColor: 'rgba(0,0,0,0.3)',
         justifyContent: 'center',
         alignItems: 'center',
         zIndex: 10,
-    }
+    },
+    flatListContent: { paddingHorizontal: 20 },
+
 });
