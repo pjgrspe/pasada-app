@@ -22,7 +22,7 @@ import { regionFromCoordinates } from '../../modules/map/utils/mapHelpers';
 import { useTheme } from '../../hooks/useTheme';
 import { useTripStore } from '../../modules/map/store/useTripStore';
 
-import { gMapsApiKey } from '@/APIKeys';
+import { gMapsApiKey } from '@/APIkeys';
 
 const initialMapRegion = {
     latitude: 14.8433,
@@ -42,7 +42,7 @@ export default function DashboardScreen() {
 
     const { setMapRef, onRegionChangeComplete, animateToRegion } = useMap();
     const { currentLocation, getSingleLocation: fetchDeviceLocation, locationPermissionStatus } = useLocationTracking();
-    const { fetchAndDisplayRoute, isFetchingRoute } = useRouting();
+    const { planAndDisplayTrip, isFetchingRoute } = useRouting();
 
     const {
         markers: storeMarkers,
@@ -120,11 +120,11 @@ export default function DashboardScreen() {
     useEffect(() => {
         if (startPoint && destinationPoint) {
             clearRoutes();
-            fetchAndDisplayRoute(startPoint.coordinate, destinationPoint.coordinate);
+            planAndDisplayTrip(startPoint.coordinate, destinationPoint.coordinate, startPoint.title, destinationPoint.title);
         } else if (routes.length > 0) {
             clearRoutes();
         }
-    }, [startPoint, destinationPoint, fetchAndDisplayRoute, clearRoutes, routes.length]);
+    }, [startPoint, destinationPoint, planAndDisplayTrip, clearRoutes, routes.length]);
 
     // Adjust map region to fit markers or center on current location
     useEffect(() => {
