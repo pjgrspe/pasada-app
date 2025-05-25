@@ -1,32 +1,32 @@
+// app/(tabs)/index.tsx
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform, Alert } from 'react-native';
-import { Marker } from 'react-native-maps';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform, Alert, Button as RNButton } from 'react-native';
+import { Marker, Region } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import { Link, useRouter } from 'expo-router';
-// Components Imports
-import RouteCard from '../../components/RouteCard';
-import Loader from '../../components/Loader';
-import MapViewComponent from '../../modules/map/components/MapViewComponent';
-import CarMarker from '../../modules/map/components/CarMarker';
-import MapPin from '../../modules/map/components/MapPin';
-import SearchBar from '../../modules/map/components/SearchBar';
-import RoutePolyline from '../../modules/map/components/RoutePolyLine';
-//Map Imports
-import { useMap } from '../../modules/map/hooks/useMap';
-import { useLocationTracking } from '../../modules/map/hooks/useLocationTracking';
-import { useRouting } from '../../modules/map/hooks/useRouting';
-import { useMapStore, MapMarker as AppMapMarker } from '../../modules/map/store/useMapStore';
-import mapApiService from '../../modules/map/services/mapApiServices';
-import { regionFromCoordinates } from '../../modules/map/utils/mapHelpers';
-// Store Imports
-import { useTheme } from '../../hooks/useTheme';
-import { useTripStore } from '../../modules/map/store/useTripStore';
 
-import { gMapsApiKey } from '@/APIkeys';
+import RouteCard from '@/components/RouteCard';
+import Loader from '@/components/Loader';
 
-const initialMapRegion = {
-    latitude: 14.8433,
-    longitude: 120.8134,
+import MapViewComponent from '@/modules/map/components/MapViewComponent';
+// import CarMarker from '@/modules/map/components/CarMarker'; // Not used in this specific test flow
+import MapPin from '@/modules/map/components/MapPin';
+import SearchBar from '@/modules/map/components/SearchBar';
+import RoutePolyline from '@/modules/map/components/RoutePolyLine';
+
+import { useMap } from '@/modules/map/hooks/useMap';
+import { useLocationTracking } from '@/modules/map/hooks/useLocationTracking';
+import { useRouting } from '@/modules/map/hooks/useRouting';
+import { useMapStore, MapMarker as AppMapMarker, Route as MapDisplayRoute } from '@/modules/map/store/useMapStore';
+import mapApiService from '@/modules/map/services/mapApiServices';
+
+import { useTheme } from '@/hooks/useTheme';
+import { useTripStore } from '@/modules/map/store/useTripStore'; // Adjusted path
+import { sampleTrip } from '@/modules/map/utils/DebugTestTrip'; // Adjusted path
+
+const initialMapRegion: Region = {
+    latitude: 15.1446,
+    longitude: 120.5948,
     latitudeDelta: 0.0922,
     longitudeDelta: 0.0421,
 };
@@ -40,276 +40,325 @@ export default function DashboardScreen() {
     const [startPointQuery, setStartPointQuery] = useState('');
     const [destinationQuery, setDestinationQuery] = useState('');
 
-    const { setMapRef, onRegionChangeComplete, animateToRegion } = useMap();
+    const { setMapRef, animateToRegion, onRegionChangeComplete } = useMap();
     const { currentLocation, getSingleLocation: fetchDeviceLocation, locationPermissionStatus } = useLocationTracking();
-    const { planAndDisplayTrip, isFetchingRoute } = useRouting();
+
+    const { planAndDisplayTrip, isFetchingRoute, currentPlannedTripLegs, clearDisplayedTripInfo } = useRouting();
 
     const {
         markers: storeMarkers,
-        startPoint,
-        destinationPoint,
         routes,
-        setStartPoint,
-        setDestinationPoint,
         currentRegion: storeMapRegion,
         setCurrentRegion: setStoreCurrentRegion,
-        clearRoutes,
     } = useMapStore();
 
-    // Fetch initial data and set map region
+
     useEffect(() => {
         if (trips.length === 0 && !tripsIsLoading && !tripsError) {
             fetchTrips();
         }
         if (!storeMapRegion) {
-            if (locationPermissionStatus === 'granted') {
+             if (currentLocation && locationPermissionStatus === 'granted') {
+                const region = {
+                    latitude: currentLocation.coords.latitude,
+                    longitude: currentLocation.coords.longitude,
+                    latitudeDelta: 0.02,
+                    longitudeDelta: 0.01,
+                };
+                setStoreCurrentRegion(region);
+                if (animateToRegion) animateToRegion(region);
+            } else if (locationPermissionStatus === 'granted' && !currentLocation) {
                 fetchDeviceLocation().then(loc => {
-                    const region = loc
-                        ? {
-                              latitude: loc.coords.latitude,
-                              longitude: loc.coords.longitude,
-                              latitudeDelta: 0.0922,
-                              longitudeDelta: 0.0421,
-                          }
-                        : initialMapRegion;
-                    setStoreCurrentRegion(region);
-                    animateToRegion(region);
+                    if (loc) {
+                        const region = {
+                            latitude: loc.coords.latitude,
+                            longitude: loc.coords.longitude,
+                            latitudeDelta: 0.02,
+                            longitudeDelta: 0.01,
+                        };
+                        setStoreCurrentRegion(region);
+                        if (animateToRegion) animateToRegion(region);
+                    } else {
+                         setStoreCurrentRegion(initialMapRegion);
+                    }
                 });
             } else {
-                setStoreCurrentRegion(initialMapRegion);
+                 setStoreCurrentRegion(initialMapRegion);
             }
         }
     }, [
         trips.length, tripsIsLoading, tripsError, fetchTrips,
-        fetchDeviceLocation, locationPermissionStatus,
+        currentLocation, fetchDeviceLocation, locationPermissionStatus,
         animateToRegion, storeMapRegion, setStoreCurrentRegion
     ]);
 
-    // Geocode address and set map points
     const handleGeocodeAndSetPoint = useCallback(async (query: string, type: 'start' | 'destination') => {
         if (!query.trim()) {
-            if (type === 'start') setStartPoint(null);
-            else setDestinationPoint(null);
             return;
         }
-
-        try {
-            const geocoded = await mapApiService.geocode(query);
-            if (geocoded) {
-                const newMarker: AppMapMarker = {
-                    id: `${type}Point`,
-                    coordinate: geocoded.coordinate,
-                    title: geocoded.formattedAddress,
-                    pinColor: type === 'start' ? colors.success : colors.error,
-                };
-                if (type === 'start') setStartPoint(newMarker);
-                else setDestinationPoint(newMarker);
-                animateToRegion({ ...geocoded.coordinate, latitudeDelta: 0.05, longitudeDelta: 0.05 });
+        const geocoded = await mapApiService.geocode(query);
+        if (geocoded) {
+            const { coordinate, formattedAddress } = geocoded;
+            if (type === 'start') {
+                setStartPointQuery(formattedAddress);
             } else {
-                Alert.alert("Geocode Error", `Could not find location for "${query}"`);
-                if (type === 'start') setStartPoint(null);
-                else setDestinationPoint(null);
+                setDestinationQuery(formattedAddress);
             }
-        } catch (error) {
-            console.error("Geocoding failed:", error);
-            Alert.alert("Error", "An error occurred during geocoding.");
-        }
-    }, [setStartPoint, setDestinationPoint, animateToRegion, colors.success, colors.error]);
-
-    // Fetch and display route when points are set
-    useEffect(() => {
-        if (startPoint && destinationPoint) {
-            clearRoutes();
-            planAndDisplayTrip(startPoint.coordinate, destinationPoint.coordinate, startPoint.title, destinationPoint.title);
-        } else if (routes.length > 0) {
-            clearRoutes();
-        }
-    }, [startPoint, destinationPoint, planAndDisplayTrip, clearRoutes, routes.length]);
-
-    // Adjust map region to fit markers or center on current location
-    useEffect(() => {
-        const activePoints = [startPoint, destinationPoint].filter(p => p !== null) as AppMapMarker[];
-        if (activePoints.length > 0) {
-            const coordinates = activePoints.map(p => p.coordinate);
-            const newRegion = regionFromCoordinates(coordinates, 0.5);
-            if (newRegion) {
-                animateToRegion(newRegion);
+            if (animateToRegion) {
+                animateToRegion({ ...coordinate, latitudeDelta: 0.05, longitudeDelta: 0.05 });
             }
-        } else if (currentLocation && !storeMapRegion) { // Only animate if no region is set
-            animateToRegion({ ...currentLocation.coords, latitudeDelta: 0.0922, longitudeDelta: 0.0421 });
+        } else {
+            Alert.alert("Geocode Error", `Could not find location for "${query}"`);
         }
-    }, [startPoint, destinationPoint, currentLocation, animateToRegion, storeMapRegion]);
+    }, [animateToRegion]);
+
+    const handleTestTrip = () => {
+        console.log("Test button pressed. Planning trip with sample data:", sampleTrip);
+        if (sampleTrip.startPoint && sampleTrip.endPoint) {
+            planAndDisplayTrip(sampleTrip.startPoint, sampleTrip.endPoint, "Sample Start", "Sample End");
+        } else {
+            Alert.alert("Test Error", "Sample trip data is incomplete.");
+        }
+    };
+
+    const handleClearAll = () => {
+        useMapStore.getState().clearRoutePoints();
+        setStartPointQuery('');
+        setDestinationQuery('');
+        clearDisplayedTripInfo();
+        const targetRegion = currentLocation && currentLocation.coords
+            ? { latitude: currentLocation.coords.latitude, longitude: currentLocation.coords.longitude, latitudeDelta: 0.02, longitudeDelta: 0.01 }
+            : initialMapRegion;
+
+        if (animateToRegion) animateToRegion(targetRegion);
+        else setStoreCurrentRegion(targetRegion);
+    };
+
 
     const handleRouteCardPress = (id: string) => {
         router.push(`/(tabs)/trips/${id}`);
     };
 
-    const handleClearInputs = () => {
-        setStartPointQuery('');
-        setDestinationQuery('');
-        setStartPoint(null);
-        setDestinationPoint(null);
-        clearRoutes();
-        if (currentLocation) {
-             animateToRegion({ ...currentLocation.coords, latitudeDelta: 0.0922, longitudeDelta: 0.0421 });
-        } else {
-            animateToRegion(initialMapRegion);
-        }
-    };
-
-
     const dynamicStyles = StyleSheet.create({
-        flexContainer: { backgroundColor: colors.background },
-        planningContainer: { backgroundColor: colors.card },
+        flexContainer: { backgroundColor: colors.background, flex: 1 },
+        headerBar: { backgroundColor: isDarkMode ? colors.card : '#FFD700', },
+        headerTitle: { color: isDarkMode ? colors.text : '#333' },
+        planningContainer: { backgroundColor: colors.card, },
         mapInfoButton: { backgroundColor: colors.card },
         mapInfoIcon: { color: colors.text },
         previousRoutesContainer: { backgroundColor: colors.card },
         previousTitle: { color: colors.text },
         arrowButton: { backgroundColor: colors.background },
         arrowIcon: { color: colors.text },
+        inputStyle: { color: colors.text, backgroundColor: colors.inputBackground },
         inputContainer: { backgroundColor: colors.inputBackground, borderColor: colors.border },
-        timeButton: { backgroundColor: colors.secondary },
-        timeText: { color: colors.background },
-        settingsButton: { backgroundColor: colors.primary },
-        mapContainerBackground: { backgroundColor: colors.border },
-        loadingOverlayBackground: { backgroundColor: isDarkMode ? 'rgba(0,0,0,0.5)' : 'rgba(100,100,100,0.3)' },
-        noTripsText: { paddingHorizontal: 20, color: colors.text, opacity: 0.7 },
+        instructionsContainer: {
+            padding: 15,
+            backgroundColor: colors.card,
+            margin: 10,
+            borderRadius: 8,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 0.05,
+            shadowRadius: 2,
+            elevation: 2,
+        },
+        legInstruction: {
+            marginBottom: 10,
+            paddingBottom: 10,
+            borderBottomWidth: 1,
+            borderBottomColor: colors.border,
+        },
+        legType: {
+            fontWeight: 'bold',
+            fontSize: 16,
+            color: colors.primary,
+            marginBottom: 4,
+        },
+        legDetail: {
+            fontSize: 14,
+            color: colors.text,
+            opacity: 0.8,
+        },
+        testButtonContainer: {
+            marginVertical: 10,
+            marginHorizontal: 20,
+        }
     });
 
     return (
         <KeyboardAvoidingView
-            style={[styles.flexContainer, dynamicStyles.flexContainer]}
+            style={dynamicStyles.flexContainer}
             behavior={Platform.OS === "ios" ? "padding" : "height"}
-            keyboardVerticalOffset={Platform.OS === "ios" ? 64 : 0} // Adjust as needed
+            keyboardVerticalOffset={Platform.OS === "ios" ? 64 : 0}
         >
-            <ScrollView
-                style={styles.flexContainer}
-                contentContainerStyle={styles.scrollContent}
-                keyboardShouldPersistTaps="handled"
-            >
-                {/* Planning Section */}
-                <View style={[styles.planningContainer, dynamicStyles.planningContainer]}>
-                    <SearchBar
-                        placeholder="Current Location / Start Point"
-                        value={startPointQuery}
-                        onChangeText={setStartPointQuery}
-                        onSearchSubmit={() => handleGeocodeAndSetPoint(startPointQuery, 'start')}
-                        iconName="navigate-circle-outline"
-                        style={dynamicStyles.inputContainer}
-                    />
-                    <SearchBar
-                        placeholder="Where are you going?"
-                        value={destinationQuery}
-                        onChangeText={setDestinationQuery}
-                        onSearchSubmit={() => handleGeocodeAndSetPoint(destinationQuery, 'destination')}
-                        iconName="location-outline"
-                        style={dynamicStyles.inputContainer}
-                    />
-                    <View style={styles.optionsRow}>
-                        <TouchableOpacity style={[styles.timeButtonBase, dynamicStyles.timeButton]}>
-                            <Ionicons name="time-outline" size={18} color={dynamicStyles.timeText.color} />
-                            <Text style={[styles.timeTextBase, dynamicStyles.timeText]}>Now</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={[styles.timeButtonBase, dynamicStyles.timeButton]} onPress={handleClearInputs}>
-                            <Ionicons name="close-circle-outline" size={18} color={dynamicStyles.timeText.color} />
-                            <Text style={[styles.timeTextBase, dynamicStyles.timeText]}>Clear</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={[styles.modeButtonBase, { backgroundColor: colors.secondary }]}>
-                            <Ionicons name="car-sport-outline" size={22} color={colors.text} />
-                        </TouchableOpacity>
-                        <TouchableOpacity style={[styles.settingsButtonBase, dynamicStyles.settingsButton]}>
-                            <Ionicons name="options-outline" size={22} color={'#FFFFFF'} />
-
-                        </TouchableOpacity>
-                    </View>
+            <View style={dynamicStyles.flexContainer}>
+                <View style={[styles.headerBar, dynamicStyles.headerBar]}>
+                    <Text style={[styles.headerTitle, dynamicStyles.headerTitle]}>Plan & Map</Text>
+                    <TouchableOpacity onPress={() => router.push('../(tabs)/notifications')}>
+                        <Ionicons name="notifications-outline" size={26} color={dynamicStyles.headerTitle.color} />
+                    </TouchableOpacity>
                 </View>
 
-                {/* Map Section */}
-                <View style={[styles.mapContainer, dynamicStyles.mapContainerBackground]}>
-                    <MapViewComponent
-                        ref={setMapRef}
-                        initialRegion={storeMapRegion || initialMapRegion}
-                        onRegionChangeComplete={onRegionChangeComplete}
-                        showsUserLocation={locationPermissionStatus === 'granted'}
-                        showsMyLocationButton={false}
-                    >
-                        {storeMarkers.map(marker => (
-                            <Marker
-                                key={marker.id}
-                                coordinate={marker.coordinate}
-                                title={marker.title}
-                                description={marker.description}
-                                pinColor={marker.pinColor}
-                            >
-                                {(marker.id === 'startPoint' || marker.id === 'destinationPoint') ?
-                                    <MapPin type={marker.id === 'startPoint' ? 'start' : 'end'} size={36} />
-                                    : <CarMarker coordinate={marker.coordinate} carName={marker.title} />
-                                }
-                            </Marker>
-                        ))}
-                        {routes.map(route => (
-                            <RoutePolyline key={route.id} coordinates={route.coordinates} />
-                        ))}
-                    </MapViewComponent>
-                    <TouchableOpacity
-                        style={[styles.mapInfoButton, dynamicStyles.mapInfoButton]}
-                        onPress={() => currentLocation && animateToRegion({ ...currentLocation.coords, latitudeDelta: 0.02, longitudeDelta: 0.01 })}
-                    >
-                        <Ionicons name="navigate-circle-outline" size={24} color={dynamicStyles.mapInfoIcon.color} />
-                    </TouchableOpacity>
-                    {isFetchingRoute && (
-                        <View style={[styles.loadingOverlay, dynamicStyles.loadingOverlayBackground]}>
-                            <Loader text="Fetching route..." />
+                <ScrollView
+                    style={dynamicStyles.flexContainer}
+                    contentContainerStyle={styles.scrollContent}
+                    keyboardShouldPersistTaps="handled"
+                >
+                    <View style={dynamicStyles.testButtonContainer}>
+                        <RNButton title="Test Sample Trip" onPress={handleTestTrip} color={colors.primary} />
+                    </View>
+
+                    <View style={[styles.planningContainer, dynamicStyles.planningContainer]}>
+                        <SearchBar
+                            placeholder="Current Location / Start Point"
+                            value={startPointQuery}
+                            onChangeText={setStartPointQuery}
+                            onSearchSubmit={() => handleGeocodeAndSetPoint(startPointQuery, 'start')}
+                            iconName="navigate-circle-outline"
+                            style={dynamicStyles.inputContainer}
+                        />
+                        <View style={styles.separatorLine}></View>
+                        <SearchBar
+                            placeholder="Where are you going?"
+                            value={destinationQuery}
+                            onChangeText={setDestinationQuery}
+                            onSearchSubmit={() => handleGeocodeAndSetPoint(destinationQuery, 'destination')}
+                            iconName="location-outline"
+                            style={dynamicStyles.inputContainer}
+                        />
+                        <View style={styles.optionsRow}>
+                             <TouchableOpacity style={styles.timeButton}>
+                                 <Ionicons name="time-outline" size={18} color="#FFF" />
+                                 <Text style={styles.timeText}>Now</Text>
+                             </TouchableOpacity>
+                             <TouchableOpacity style={styles.timeButton} onPress={handleClearAll}>
+                                 <Ionicons name="close-circle-outline" size={18} color="#FFF" />
+                                 <Text style={styles.timeText}>Clear</Text>
+                             </TouchableOpacity>
+                             <TouchableOpacity style={styles.modeButton}>
+                                <Ionicons name="car-sport-outline" size={22} color={colors.text} />
+                             </TouchableOpacity>
+                             <TouchableOpacity style={styles.settingsButton}>
+                                <Ionicons name="options-outline" size={22} color={colors.text} />
+                             </TouchableOpacity>
+                        </View>
+                    </View>
+
+                    <View style={styles.mapContainer}>
+                        <MapViewComponent
+                          ref={setMapRef}
+                          initialRegion={storeMapRegion || initialMapRegion}
+                          onRegionChangeComplete={onRegionChangeComplete}
+                          showsUserLocation={locationPermissionStatus === 'granted'}
+                          showsMyLocationButton={false}
+                        >
+                            {storeMarkers.map(marker => (
+                                <Marker
+                                    key={marker.id}
+                                    coordinate={marker.coordinate}
+                                    title={marker.title}
+                                    description={marker.description}
+                                >
+                                    <MapPin
+                                        type={marker.id === 'startPoint' ? 'start' : marker.id === 'destinationPoint' ? 'end' : 'generic'}
+                                        color={marker.pinColor}
+                                        size={36}
+                                    />
+                                </Marker>
+                            ))}
+
+                            {/* CORRECTED LINE BELOW */}
+                            {routes.map((route: MapDisplayRoute) => (
+                                <RoutePolyline
+                                  key={route.id}
+                                  coordinates={route.coordinates}
+                                  strokeColor={route.color || (route.routeType === 'walk' ? colors.secondary : colors.primary)}
+                                  strokeWidth={route.routeType === 'walk' ? 3 : 6}
+                                  lineDashPattern={route.routeType === 'walk' ? [1, 8] : undefined}
+                                  zIndex={route.routeType === 'jeepney' ? 1 : 0}
+                                />
+                            ))}
+                        </MapViewComponent>
+                        <TouchableOpacity
+                            style={[styles.mapInfoButton, dynamicStyles.mapInfoButton]}
+                            onPress={() => currentLocation && animateToRegion && animateToRegion({...currentLocation.coords, latitudeDelta: 0.02, longitudeDelta: 0.01})}
+                        >
+                            <Ionicons name="navigate-circle-outline" size={24} color={dynamicStyles.mapInfoIcon.color} />
+                        </TouchableOpacity>
+                         {isFetchingRoute && <View style={styles.loadingOverlay}><Loader text="Planning trip..."/></View>}
+                    </View>
+
+                    {currentPlannedTripLegs && currentPlannedTripLegs.length > 0 && (
+                        <View style={dynamicStyles.instructionsContainer}>
+                            <Text style={[styles.previousTitle, dynamicStyles.previousTitle, {marginBottom: 10}]}>Trip Plan:</Text>
+                            {currentPlannedTripLegs.map((leg, index) => (
+                                <View key={index} style={dynamicStyles.legInstruction}>
+                                <Text style={dynamicStyles.legType}>
+                                    {leg.type === 'walk' ? '🚶 Walk' : `🚌 Jeepney: ${leg.routeName || leg.routeId}`}
+                                </Text>
+                                {leg.instructions && <Text style={dynamicStyles.legDetail}>{leg.instructions}</Text>}
+                                {typeof leg.distance === 'number' && <Text style={dynamicStyles.legDetail}>Distance: {(leg.distance / 1000).toFixed(1)} km</Text>}
+                                {typeof leg.duration === 'number' && <Text style={dynamicStyles.legDetail}>Est. Time: {Math.round(leg.duration / 60)} min</Text>}
+                                {leg.startAddress && <Text style={dynamicStyles.legDetail}>From: {leg.startAddress}</Text>}
+                                {leg.endAddress && <Text style={dynamicStyles.legDetail}>To: {leg.endAddress}</Text>}
+                                </View>
+                            ))}
                         </View>
                     )}
-                </View>
 
-                {/* Recent Trips Section */}
-                <View style={[styles.previousRoutesContainer, dynamicStyles.previousRoutesContainer]}>
-                    <View style={styles.previousHeader}>
-                        <Text style={[styles.previousTitle, dynamicStyles.previousTitle]}>Recent Trips</Text>
-                        <Link href="/(tabs)/trips" asChild>
-                            <TouchableOpacity style={[styles.arrowButton, dynamicStyles.arrowButton]}>
-                                <Ionicons name="arrow-forward-outline" size={24} color={dynamicStyles.arrowIcon.color} />
-                            </TouchableOpacity>
-                        </Link>
+                    <View style={[styles.previousRoutesContainer, dynamicStyles.previousRoutesContainer]}>
+                         <View style={styles.previousHeader}>
+                            <Text style={[styles.previousTitle, dynamicStyles.previousTitle]}>Recent Trips</Text>
+                            <Link href="/(tabs)/trips" asChild>
+                                <TouchableOpacity style={[styles.arrowButton, dynamicStyles.arrowButton]}>
+                                    <Ionicons name="arrow-forward-outline" size={24} color={dynamicStyles.arrowIcon.color} />
+                                </TouchableOpacity>
+                            </Link>
+                        </View>
+                        {tripsIsLoading && recentTrips.length === 0 ? <Loader size="small" color={colors.primary}/> : null}
+                        {recentTrips.length > 0 ? (
+                            <FlatList
+                                data={recentTrips}
+                                horizontal
+                                showsHorizontalScrollIndicator={false}
+                                keyExtractor={(item) => item.id}
+                                renderItem={({ item }) => (
+                                    <RouteCard
+                                        startTime={item.startTime}
+                                        endTime={item.endTime}
+                                        startLocation={item.startLocation}
+                                        endLocation={item.endLocation}
+                                        onPress={() => handleRouteCardPress(item.id)}
+                                    />
+                                )}
+                                contentContainerStyle={{ paddingHorizontal: 20 }}
+                            />
+                        ) : (
+                           !tripsIsLoading && <Text style={{ paddingHorizontal: 20, color: colors.text, opacity: 0.7 }}>No recent trips yet.</Text>
+                        )}
                     </View>
-                    {tripsIsLoading && recentTrips.length === 0 ? (
-                        <Loader size="small" color={colors.primary} />
-                    ) : recentTrips.length > 0 ? (
-                        <FlatList
-                            data={recentTrips}
-                            horizontal
-                            showsHorizontalScrollIndicator={false}
-                            keyExtractor={(item) => item.id}
-                            renderItem={({ item }) => (
-                                <RouteCard
-                                    startTime={item.startTime}
-                                    endTime={item.endTime}
-                                    startLocation={item.startLocation}
-                                    endLocation={item.endLocation}
-                                    onPress={() => handleRouteCardPress(item.id)}
-                                />
-                            )}
-                            contentContainerStyle={styles.flatListContent}
-                        />
-                    ) : (
-                        <Text style={dynamicStyles.noTripsText}>
-                            No recent trips yet.
-                        </Text>
-                    )}
-                </View>
-            </ScrollView>
+                </ScrollView>
+            </View>
         </KeyboardAvoidingView>
     );
 }
 
 const styles = StyleSheet.create({
     flexContainer: { flex: 1 },
-    scrollContent: { paddingBottom: 20 },
+    scrollContent: { paddingBottom: 20, flexGrow: 1 },
+    headerBar: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingHorizontal: 20,
+        paddingTop: Platform.OS === 'android' ? 30 : 50,
+        paddingBottom: 10
+    },
+    headerTitle: { fontSize: 20, fontWeight: 'bold' },
     planningContainer: {
         marginHorizontal: 20,
-        marginTop: 20, // Space from the top (or screen header)
+        marginTop: 10,
         marginBottom: 10,
         borderRadius: 20,
         padding: 15,
@@ -319,28 +368,18 @@ const styles = StyleSheet.create({
         shadowRadius: 3,
         elevation: 3,
     },
-    optionsRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between', // Use space-between for better distribution
-        alignItems: 'center',
-        marginTop: 15,
-    },
-    timeButtonBase: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 15,
-        paddingVertical: 8,
-        borderRadius: 20,
-        marginRight: 5, // Add some margin between buttons
-    },
-    timeTextBase: { marginLeft: 5, fontSize: 14 },
-    modeButtonBase: { padding: 8, borderRadius: 20 },
-    settingsButtonBase: { padding: 10, borderRadius: 10 },
+    separatorLine: { height: 1, backgroundColor: '#4A4A4C', marginVertical: 8 },
+    optionsRow: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', marginTop: 15 },
+    timeButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#4A4A4C', paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20 },
+    timeText: { color: '#FFF', marginLeft: 5, fontSize: 14 },
+    modeButton: { backgroundColor: '#4A4A4C', padding: 8, borderRadius: 20 },
+    settingsButton: { backgroundColor: '#FF8C00', padding: 10, borderRadius: 10 },
     mapContainer: {
-        height: 350,
+        height: 300,
         marginHorizontal: 20,
         borderRadius: 15,
         overflow: 'hidden',
+        backgroundColor: '#E0E0E0',
         position: 'relative',
         marginTop: 10,
     },
@@ -352,25 +391,23 @@ const styles = StyleSheet.create({
         borderRadius: 20,
     },
     previousRoutesContainer: {
-        marginHorizontal: 20,
         marginTop: 20,
         paddingVertical: 20,
-        borderRadius: 20,
     },
     previousHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
         paddingHorizontal: 20,
-        marginBottom: 15,
+        marginBottom: 15
     },
     previousTitle: { fontSize: 18, fontWeight: 'bold' },
-    arrowButton: { padding: 8, borderRadius: 15 },
+    arrowButton: { padding: 8, borderRadius: 15, },
     loadingOverlay: {
         ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(0,0,0,0.3)',
         justifyContent: 'center',
         alignItems: 'center',
         zIndex: 10,
-    },
-    flatListContent: { paddingHorizontal: 20 },
+    }
 });
