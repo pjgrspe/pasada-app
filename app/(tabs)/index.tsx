@@ -34,7 +34,7 @@ import { Coordinate, PlannedTripLeg } from '@/modules/map/utils/routeTypes';
 
 import { useTheme } from '@/hooks/useTheme';
 import { useTripStore } from '@/modules/map/store/useTripStore';
-import { sampleTrip } from '@/modules/map/utils/DebugTestTrip';
+import { sampleTrip, sampleTrip2 } from '@/modules/map/utils/DebugTestTrip';
 import { Text } from '@/components/Themed';
 
 const initialMapRegion: Region = {
@@ -177,15 +177,51 @@ export default function DashboardScreen() {
     const handleTestSampleTripButton = () => {
         // ... (function remains the same) ...
         console.log("Test Sample Trip (Dev) button pressed. Planning with predefined sample data.");
-        setStartPointQuery("Sample Start Location (Nepo Mall)"); 
+        setStartPointQuery("Sample Start Location"); 
         setDestinationQuery("Sample End Location (AUF)"); 
 
         if (sampleTrip.startPoint && sampleTrip.endPoint) {
             planAndDisplayTrip(
                 sampleTrip.startPoint,
                 sampleTrip.endPoint,
-                "Sample Start: Nepo Mall Area", 
+                "Sample Start: Diamond subd", 
                 "Sample End: AUF Area"       
+            );
+        } else {
+            Alert.alert("Test Error", "Sample trip data from DebugTestTrip.ts is incomplete or not loaded.");
+        }
+    };
+
+    const handleTestSampleTripButton2 = () => {
+        // ... (function remains the same) ...
+        console.log("Test Sample Trip (Dev) button pressed. Planning with predefined sample data.");
+        setStartPointQuery("Sample Start Location (AUF)"); 
+        setDestinationQuery("Sample End Location (Diamond subd)"); 
+
+        if (sampleTrip.startPoint && sampleTrip.endPoint) {
+            planAndDisplayTrip(
+                sampleTrip.endPoint,
+                sampleTrip.startPoint,
+                "Sample Start: AUF Area", 
+                "Sample End: Diamond subd"       
+            );
+        } else {
+            Alert.alert("Test Error", "Sample trip data from DebugTestTrip.ts is incomplete or not loaded.");
+        }
+    };
+
+        const handleTestSampleTripButton3 = () => {
+        // ... (function remains the same) ...
+        console.log("Test Sample Trip (Dev) button pressed. Planning with predefined sample data.");
+        setStartPointQuery("Sample Start Location"); 
+        setDestinationQuery("Sample End Location"); 
+
+        if (sampleTrip.startPoint && sampleTrip.endPoint) {
+            planAndDisplayTrip(
+                sampleTrip2.endPoint,
+                sampleTrip2.startPoint,
+                "Sample Start:", 
+                "Sample End:"       
             );
         } else {
             Alert.alert("Test Error", "Sample trip data from DebugTestTrip.ts is incomplete or not loaded.");
@@ -212,6 +248,7 @@ export default function DashboardScreen() {
     // --- Define sections for the main FlatList ---
     const listSections: Array<{type: string, key: string, data?: any}> = [
         { type: 'planning_inputs', key: 'planning_inputs' },
+        { type: 'test_button', key: 'test_button' },
         { type: 'map_view', key: 'map_view' },
     ];
 
@@ -228,12 +265,19 @@ export default function DashboardScreen() {
         }
     }
     
-    listSections.push({ type: 'test_button', key: 'test_button' });
     listSections.push({ type: 'recent_trips', key: 'recent_trips', data: recentTrips });
 
 
     const renderListSection = ({ item }: { item: {type: string, key: string, data?: any} }) => {
         switch (item.type) {
+            case 'test_button':
+                return (
+                    <View style={dynamicStyles.testButtonContainer}>
+                        <RNButton title="Test 1 Sample Trip (Dev)" onPress={handleTestSampleTripButton} color={isDarkMode ? colors.accent : colors.primary} />
+                        <RNButton title="Test 2 Sample Trip (Dev)" onPress={handleTestSampleTripButton2} color={isDarkMode ? colors.accent : colors.primary} />
+                        <RNButton title="Test 3 Sample Trip (Dev)" onPress={handleTestSampleTripButton3} color={isDarkMode ? colors.accent : colors.primary} />
+                    </View>
+                );
             case 'planning_inputs':
                 return (
                     <View style={[styles.planningContainer, dynamicStyles.planningContainer]}>
@@ -320,12 +364,6 @@ export default function DashboardScreen() {
                 );
             case 'instruction_leg':
                 return <InstructionLegItem leg={item.data.leg} legIndex={item.data.legIndex} />;
-            case 'test_button':
-                return (
-                    <View style={dynamicStyles.testButtonContainer}>
-                        <RNButton title="Test Sample Trip (Dev)" onPress={handleTestSampleTripButton} color={isDarkMode ? colors.accent : colors.primary} />
-                    </View>
-                );
             case 'recent_trips':
                  return (
                     <View style={[styles.previousRoutesContainer, dynamicStyles.previousRoutesContainer]}>
