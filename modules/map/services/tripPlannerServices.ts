@@ -1,7 +1,5 @@
 // pasada-gemini/modules/map/services/tripPlannerServices.ts
-// Added logic to handle "no-board zone" at jeepney terminals.
-// If a boarding point is too close to the start of a jeep route,
-// it redirects the user to walk to the actual start of the route (index 0).
+// Increased JEEP_TERMINAL_NO_BOARD_VERTEX_COUNT and added logging for terminal logic.
 
 import {
   Coordinate,
@@ -27,6 +25,7 @@ const ALIGNMENT_PROXIMITY_THRESHOLD_METERS = 200;
 const MIN_JEEP_RIDE_PROGRESS_METERS = 200;
 const DESIRED_PATH_SEARCH_AHEAD_METERS = 600;
 const DIVERGENCE_THRESHOLD_METERS = 250;
+// Increased threshold for terminal zone detection
 const JEEP_TERMINAL_NO_BOARD_VERTEX_COUNT = 25; // If boarding index is less than this, redirect to route start (index 0)
 
 // --- Constants for Post-Processing Refinement Optimization ---
@@ -41,12 +40,12 @@ const OVERLAP_WALK_POINTS_TO_CHECK_V7 = 4;
 
 interface AlignedJeepInfo {
   jeepRoute: JeepneyRoute;
-  boardingPointOnJeep: Coordinate; // This will be the actual coordinate on the jeep route to board
+  boardingPointOnJeep: Coordinate;
   alightPointOnJeep: Coordinate;
   desiredPathStartIndex: number;
   desiredPathEndIndex: number;
-  walkToBoardingDistance: number; // Walk distance to boardingPointOnJeep
-  jeepBoardingVertexIndex: number; // The index on the full jeep route where the ride segment starts
+  walkToBoardingDistance: number;
+  jeepBoardingVertexIndex: number;
   jeepAlightingVertexIndex: number;
 }
 
@@ -82,7 +81,6 @@ function findBestAlignedJeepney(
             if (calculateDistance(pointOnDesiredPath, projectedPointOnJeepRoute) > ALIGNMENT_PROXIMITY_THRESHOLD_METERS) continue;
 
             let candidateBoardingVertexIndex = initialSegmentIndex;
-            // Snap to the closer of the two vertices of the segment
             if (initialSegmentIndex + 1 < segInfo.originalRoute.coordinates.length &&
                 calculateDistance(projectedPointOnJeepRoute, segInfo.originalRoute.coordinates[initialSegmentIndex + 1]) <
                 calculateDistance(projectedPointOnJeepRoute, segInfo.originalRoute.coordinates[initialSegmentIndex])) {
@@ -94,17 +92,19 @@ function findBestAlignedJeepney(
             let rideStartsFromVertexIndex = candidateBoardingVertexIndex;
             let walkToThisBoardingPointDist = calculateDistance(actualCurrentLocation, actualBoardingCoordinateForRide);
 
-            // Check if the candidate boarding index is within the "no-board zone" (terminal area)
+            // DEBUG LOG for terminal logic
+            // console.log(`[Jeep: ${segInfo.originalRoute.name}] Initial candidateBoardingVertexIndex: ${candidateBoardingVertexIndex}`);
+
             if (candidateBoardingVertexIndex < JEEP_TERMINAL_NO_BOARD_VERTEX_COUNT && segInfo.originalRoute.coordinates.length > 0) {
-                // If in no-board zone, user must walk to the actual start of the jeep route (terminal)
+                // console.log(`  -> Candidate is in terminal zone ( < ${JEEP_TERMINAL_NO_BOARD_VERTEX_COUNT}). Forcing board at index 0.`);
                 actualBoardingCoordinateForRide = segInfo.originalRoute.coordinates[0];
-                rideStartsFromVertexIndex = 0; // Jeep ride segment will start from index 0
-                // Recalculate walk distance to the terminal
+                rideStartsFromVertexIndex = 0;
                 walkToThisBoardingPointDist = calculateDistance(actualCurrentLocation, actualBoardingCoordinateForRide);
             }
+            // console.log(`  -> Final rideStartsFromVertexIndex: ${rideStartsFromVertexIndex}, walkDist: ${walkToThisBoardingPointDist.toFixed(0)}m`);
+
 
             if (walkToThisBoardingPointDist > maxWalkToBoard) continue;
-
 
             let tracedAlightPointCoordinate = actualBoardingCoordinateForRide;
             let tracedAlightingVertexIndex = rideStartsFromVertexIndex;
@@ -163,12 +163,12 @@ function findBestAlignedJeepney(
                     bestOptionScore = score;
                     bestOption = {
                         jeepRoute: segInfo.originalRoute,
-                        boardingPointOnJeep: actualBoardingCoordinateForRide, // This is the key coordinate for the walk and jeep start
+                        boardingPointOnJeep: actualBoardingCoordinateForRide,
                         alightPointOnJeep: tracedAlightPointCoordinate,
                         desiredPathStartIndex: dpIdx,
                         desiredPathEndIndex: jeepCoversDesiredPathUpToIndex,
                         walkToBoardingDistance: walkToThisBoardingPointDist,
-                        jeepBoardingVertexIndex: rideStartsFromVertexIndex, // This is where the *jeep ride part* starts on its route
+                        jeepBoardingVertexIndex: rideStartsFromVertexIndex,
                         jeepAlightingVertexIndex: tracedAlightingVertexIndex
                     };
                 }
@@ -178,7 +178,7 @@ function findBestAlignedJeepney(
     return bestOption;
 }
 
-
+// ... (refineTripLegs, getCoordinatesInSearchWindow, trimJeepLeg remain the same as the previous good version)
 async function refineTripLegs(
     legs: PlannedTripLeg[],
     finalDestination: Coordinate
@@ -539,18 +539,18 @@ export async function planTripWithDrivingGuide(
             consecutiveShortJeepLegsOnSameRoute = 0;
         }
 
-      const walkToBoardLeg = await getWalkingDirections(currentLocation, alignedJeepInfo.boardingPointOnJeep); // Boarding point is now potentially the terminal
+      const walkToBoardLeg = await getWalkingDirections(currentLocation, alignedJeepInfo.boardingPointOnJeep);
       const walkDistanceToBoard = (walkToBoardLeg?.distance as number) ?? Infinity;
 
       if (walkToBoardLeg && walkDistanceToBoard <= MAX_WALK_TO_JEEP_METERS) {
         if (walkDistanceToBoard > 5) {
             plannedLegs.push(walkToBoardLeg);
         }
-        currentLocation = alignedJeepInfo.boardingPointOnJeep; // This is the point user walks to (e.g. terminal)
+        currentLocation = alignedJeepInfo.boardingPointOnJeep;
 
         const jeepRideCoordinates = trimJeepLeg(
             alignedJeepInfo.jeepRoute.coordinates,
-            alignedJeepInfo.boardingPointOnJeep, // The jeep ride starts from this point on its route
+            alignedJeepInfo.boardingPointOnJeep,
             alignedJeepInfo.alightPointOnJeep
         );
         const jeepRideDist = calculateDistanceOfPolyline(jeepRideCoordinates);
@@ -562,10 +562,11 @@ export async function planTripWithDrivingGuide(
                 instructions: `Take ${alignedJeepInfo.jeepRoute.name}.`,
                 distance: jeepRideDist,
                 duration: (jeepRideDist / (12 * 1000 / 3600)),
-                jeepBoardingPointInfo: `Board ${alignedJeepInfo.jeepRoute.name}${alignedJeepInfo.jeepBoardingVertexIndex === 0 ? ' at terminal' : ''}`, // Add "at terminal" if applicable
+                jeepBoardingPointInfo: `Board ${alignedJeepInfo.jeepRoute.name}${alignedJeepInfo.jeepBoardingVertexIndex === 0 ? ' at terminal' : ''}`,
                 jeepAlightingPointInfo: `Alight from ${alignedJeepInfo.jeepRoute.name}`,
-                jeepLegFullRouteStartIndex: alignedJeepInfo.jeepBoardingVertexIndex, // This is where the jeep ride physically starts on its route
+                jeepLegFullRouteStartIndex: alignedJeepInfo.jeepBoardingVertexIndex,
                 jeepLegFullRouteEndIndex: alignedJeepInfo.jeepAlightingVertexIndex,
+                isTerminalBoarding: alignedJeepInfo.jeepBoardingVertexIndex === 0,
             };
             plannedLegs.push(jeepRideLeg);
             currentLocation = alignedJeepInfo.alightPointOnJeep;

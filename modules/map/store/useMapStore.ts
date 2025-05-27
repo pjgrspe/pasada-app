@@ -9,6 +9,7 @@ export interface MapMarker {
   title?: string;
   description?: string;
   pinColor?: string; // Optional: for different colored pins
+  // markerType?: 'start' | 'destination' | 'terminal_boarding' | 'generic'; // Optional for specific styling
 }
 
 // Interface for a single route to be displayed on the map (polyline)
@@ -23,33 +24,33 @@ export interface Route {
 // Defines the structure of the map state
 interface MapState {
   currentRegion: Region | undefined;
-  markers: MapMarker[]; // All general markers
+  markers: MapMarker[]; // All general markers (includes start, destination, and any additional waypoints)
   startPoint: MapMarker | null; // Specific marker for the start of a planned route
   destinationPoint: MapMarker | null; // Specific marker for the end of a planned route
   routes: Route[]; // Array of polylines to display for the current trip option
-  selectedRouteId: string | null; // ID of a selected route (might be less relevant if displaying full trips)
-  isLoading: boolean; // For map-specific loading states (e.g., fetching route data)
-  error: string | null; // For map-specific errors
+  selectedRouteId: string | null;
+  isLoading: boolean;
+  error: string | null;
 
   // Actions
   setCurrentRegion: (region: Region) => void;
-  
+
   // General marker management
-  setMarkers: (markers: MapMarker[]) => void;
-  addMarker: (marker: MapMarker) => void;
+  setMarkers: (markers: MapMarker[]) => void; // Replaces all markers
+  addMarker: (marker: MapMarker) => void; // Adds a marker, avoiding ID duplicates
   removeMarker: (markerId: string) => void;
+  clearAdditionalMarkers: () => void; // Clears markers that are not startPoint or destinationPoint
 
   // Route planning point management
   setStartPoint: (marker: MapMarker | null) => void;
   setDestinationPoint: (marker: MapMarker | null) => void;
-  clearRoutePoints: () => void; // Clears start/destination markers and all displayed routes
+  clearRoutePoints: () => void; // Clears start/destination markers AND all displayed routes
 
   // Route display management
-  setRoutes: (newRoutes: Route[]) => void; // Replaces all current routes with a new set
-  clearRoutes: () => void; // Clears all polylines from the map
-  
-  // (Optional) If you need to select individual polylines within a multi-segment trip
-  selectRoute: (routeId: string | null) => void; 
+  setRoutes: (newRoutes: Route[]) => void;
+  clearRoutes: () => void;
+
+  selectRoute: (routeId: string | null) => void;
 
   setMapLoading: (loading: boolean) => void;
   setMapError: (error: string | null) => void;
@@ -66,15 +67,11 @@ export const useMapStore = create<MapState>((set, get) => ({
   isLoading: false,
   error: null,
 
-  // --- Actions ---
-
   setCurrentRegion: (region) => set({ currentRegion: region }),
 
-  // General marker management
   setMarkers: (markers) => set({ markers }),
   addMarker: (marker) => {
     set((state) => ({
-      // Avoid duplicates by ID if adding one by one, or simply add
       markers: [...state.markers.filter(m => m.id !== marker.id), marker],
     }));
   },
@@ -83,42 +80,57 @@ export const useMapStore = create<MapState>((set, get) => ({
       markers: state.markers.filter((m) => m.id !== markerId),
     })),
 
-  // Route planning point management
+  clearAdditionalMarkers: () => set(state => {
+    const currentMarkers = state.markers;
+    const newMarkers = currentMarkers.filter(m =>
+        (state.startPoint && m.id === state.startPoint.id) ||
+        (state.destinationPoint && m.id === state.destinationPoint.id)
+    );
+    return { markers: newMarkers };
+  }),
+
   setStartPoint: (marker) => set(state => {
-    // Remove previous startPoint marker if it exists
-    const otherMarkers = state.markers.filter(m => m.id !== 'startPoint' && m.id !== state.startPoint?.id);
+    const otherMarkers = state.markers.filter(m => m.id !== state.startPoint?.id && m.id !== 'startPoint');
     return {
         startPoint: marker,
-        // Add the new start marker to the general markers list if it's not null
         markers: marker ? [...otherMarkers, marker] : otherMarkers
     };
   }),
   setDestinationPoint: (marker) => set(state => {
-    // Remove previous destinationPoint marker if it exists
-    const otherMarkers = state.markers.filter(m => m.id !== 'destinationPoint' && m.id !== state.destinationPoint?.id);
+    const otherMarkers = state.markers.filter(m => m.id !== state.destinationPoint?.id && m.id !== 'destinationPoint');
     return {
         destinationPoint: marker,
-        // Add the new destination marker to the general markers list if it's not null
         markers: marker ? [...otherMarkers, marker] : otherMarkers
     };
   }),
-  clearRoutePoints: () => set({
-    startPoint: null,
-    destinationPoint: null,
-    routes: [], // Also clear routes
-    selectedRouteId: null,
-    // Filter out start and destination markers from the general markers list
-    markers: get().markers.filter(m => m.id !== 'startPoint' && m.id !== 'destinationPoint')
+
+  clearRoutePoints: () => set(state => {
+    // This action clears start/destination points and all routes.
+    // It also implicitly clears start/destination markers from the main 'markers' array
+    // because setStartPoint/setDestinationPoint will be called with null or new markers.
+    // Any *additional* markers (like terminals) should be cleared separately if needed
+    // *before* calling setStartPoint/setDestinationPoint with new values for a new plan.
+    // Or, ensure `clearAdditionalMarkers` is called appropriately in the routing hook.
+    const newMarkers = state.markers.filter(m =>
+        m.id !== state.startPoint?.id && m.id !== 'startPoint' &&
+        m.id !== state.destinationPoint?.id && m.id !== 'destinationPoint'
+    );
+    return {
+        startPoint: null,
+        destinationPoint: null,
+        routes: [],
+        selectedRouteId: null,
+        markers: newMarkers, // Keep other markers unless explicitly cleared
+    };
   }),
 
-  // Route display management
+
   setRoutes: (newRoutes) => set({
     routes: newRoutes,
-    // Optionally, set a selectedRouteId if needed, e.g., the first segment of the new trip
     selectedRouteId: newRoutes.length > 0 ? newRoutes[0].id : null,
   }),
   clearRoutes: () => set({ routes: [], selectedRouteId: null }),
-  
+
   selectRoute: (routeId) => set({ selectedRouteId: routeId }),
 
   setMapLoading: (loading) => set({ isLoading: loading }),

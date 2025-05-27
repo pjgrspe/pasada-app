@@ -29,6 +29,7 @@ export interface PlannedTripLeg {
   // New fields to store original planned vertex indices for jeep legs
   jeepLegFullRouteStartIndex?: number; // Vertex index on the original full jeep route for boarding
   jeepLegFullRouteEndIndex?: number;   // Vertex index on the original full jeep route for alighting
+  isTerminalBoarding?: boolean; // Flag to indicate if this jeep leg starts at a terminal
 }
 
 export interface GoogleDirectionsResponse {
