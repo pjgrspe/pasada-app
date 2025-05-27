@@ -1,5 +1,6 @@
 // pasada-app/modules/map/utils/mapHelpers.ts
 import { Region } from 'react-native-maps';
+import { calculateDistance } from '../services/mapApiServices'; // Adjust the import path as necessary
 
 interface Coordinate {
   latitude: number;
@@ -12,6 +13,16 @@ interface Coordinate {
  * @param paddingFactor Optional factor to add padding around the coordinates (e.g., 0.1 for 10% padding).
  * @returns A Region object for react-native-maps.
  */
+
+export function calculateDistanceOfPolyline(polyline: Coordinate[]): number {
+    let totalDistance = 0;
+    if (!polyline || polyline.length < 2) return 0;
+    for (let i = 0; i < polyline.length - 1; i++) {
+        totalDistance += calculateDistance(polyline[i], polyline[i+1]);
+    }
+    return totalDistance;
+}
+
 export const regionFromCoordinates = (coordinates: Coordinate[], paddingFactor: number = 0.1): Region | undefined => {
   if (!coordinates || coordinates.length === 0) {
     return undefined;
