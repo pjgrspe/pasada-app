@@ -1,6 +1,6 @@
 // app/(tabs)/notifications/index.tsx
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Platform } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Platform, Alert, RefreshControl } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../../hooks/useTheme';
 import { useRouter } from 'expo-router';
@@ -22,7 +22,7 @@ type NotificationItemProps = {
   onDelete: () => void;
 };
 
-const NotificationItem = ({ item, colors, isDarkMode, onPress, onToggleRead }: NotificationItemProps) => (
+const NotificationItem = ({ item, colors, isDarkMode, onPress, onToggleRead, onDelete }: NotificationItemProps) => (
   <TouchableOpacity
     style={[
       styles.cardContainer,
@@ -87,6 +87,10 @@ const NotificationItem = ({ item, colors, isDarkMode, onPress, onToggleRead }: N
           color={item.read ? (isDarkMode ? '#bbb' : '#444') : colors.primary}
         />
       </TouchableOpacity>
+      {/* Add delete button */}
+      <TouchableOpacity onPress={onDelete} style={styles.actionButton}>
+        <Ionicons name="trash-outline" size={20} color={colors.primary} />
+      </TouchableOpacity>
     </View>
   </TouchableOpacity>
 );
@@ -95,6 +99,7 @@ export default function NotificationsListScreen() {
   const { colors, isDarkMode } = useTheme();
   const router = useRouter();
   const [notifications, setNotifications] = useState(initialNotifications);
+  const [refreshing, setRefreshing] = useState(false);
 
   const handleNotificationPress = (id: string) => {
     setNotifications(prev =>
@@ -112,11 +117,65 @@ export default function NotificationsListScreen() {
   };
 
   const handleDelete = (id: string) => {
-    setNotifications(prev => prev.filter(n => n.id !== id));
+    Alert.alert(
+      'Delete Notification',
+      'Are you sure you want to delete this notification?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            setNotifications(prev => prev.filter(n => n.id !== id));
+          },
+        },
+      ]
+    );
+  };
+
+  // New: Mark all as read
+  const handleMarkAllAsRead = () => {
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+  };
+
+  // New: Clear all notifications
+  const handleClearAll = () => {
+    Alert.alert(
+      'Clear All Notifications',
+      'Are you sure you want to clear all notifications?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear All',
+          style: 'destructive',
+          onPress: () => setNotifications([]),
+        },
+      ]
+    );
+  };
+
+  // New: Pull-to-refresh simulation
+  const onRefresh = () => {
+    setRefreshing(true);
+    setTimeout(() => {
+      setNotifications(initialNotifications);
+      setRefreshing(false);
+    }, 1000);
   };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={styles.headerRow}>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Notifications</Text>
+        <View style={{ flexDirection: 'row' }}>
+          <TouchableOpacity onPress={handleMarkAllAsRead} style={styles.headerButton}>
+            <Ionicons name="checkmark-done-outline" size={20} color={colors.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleClearAll} style={styles.headerButton}>
+            <Ionicons name="trash-bin-outline" size={20} color={colors.primary} />
+          </TouchableOpacity>
+        </View>
+      </View>
       <FlatList
         data={notifications}
         keyExtractor={item => item.id}
@@ -139,6 +198,9 @@ export default function NotificationsListScreen() {
         contentContainerStyle={notifications.length === 0 ? styles.emptyList : styles.list}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+        }
       />
     </View>
   );
@@ -148,6 +210,25 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     paddingTop: Platform.OS === 'android' ? 24 : 0,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 5,
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  headerButton: {
+    marginLeft: 12,
+    padding: 6,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0,0,0,0.04)',
   },
   list: {
     paddingTop: 8,
