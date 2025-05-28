@@ -1,15 +1,6 @@
-<<<<<<< HEAD
 // app/(tabs)/notifications/index.tsx
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Platform, Alert, RefreshControl } from 'react-native';
-=======
-// Modify: pasada-app/app/(tabs)/notifications/index.tsx
-// The title "All Notifications" is now handled by the ScreenHeader in app/(tabs)/notifications/_layout.tsx
-// The SafeAreaView and header <Text> are removed.
-
-import React, { useState } from 'react'; // Removed useState as it's not used
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Platform } from 'react-native'; // SafeAreaView removed
->>>>>>> adddc197c0c6c90c14cdc20ae6ce99991417c07e
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../../hooks/useTheme';
 import { useRouter } from 'expo-router';
