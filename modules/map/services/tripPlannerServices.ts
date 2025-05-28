@@ -1,7 +1,6 @@
 import {
   Coordinate,
   PlannedTripLeg,
-  JeepneyRoute,
 } from '../utils/routeTypes';
 import {
   getWalkingDirections,
@@ -10,7 +9,7 @@ import {
 } from './mapApiServices';
 import { calculateDistanceOfPolyline } from '../utils/mapHelpers';
 import { AlignedJeepInfo, findBestAlignedJeepney } from './jeepneyAlignmentService';
-import { refineTripLegs } from './tripRefinementService';
+import { postProcessTripLegs } from './tripRefinementService';
 import { trimJeepLeg } from '../utils/tripUtils';
 import {
     MAX_WALK_TO_JEEP_METERS,
@@ -206,7 +205,7 @@ async function _planSingleTripWithGuide(
        }
   }
   // console.log(`[PlanTripSingle] Initial plan for one guide: ${plannedLegs.length} legs.`);
-  return refineTripLegs(plannedLegs, destination);
+  return postProcessTripLegs(plannedLegs, destination);
 }
 
 

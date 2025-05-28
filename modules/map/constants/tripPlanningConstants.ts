@@ -17,5 +17,8 @@ export const ALIGHTING_POINT_SEARCH_TOLERANCE_METERS = 50;
 export const OVERLAP_CUT_THRESHOLD_METERS = 30;
 export const OVERLAP_WALK_POINTS_TO_CHECK_V7 = 4;
 export const MAX_TRIP_OPTIONS_TO_RETURN = 3;
+export const DIRECT_BOARDING_PROXIMITY_THRESHOLD = 75; // meters - how close second jeep must pass to first jeep's boarding
+export const MIN_SAVING_FOR_DIRECT_ROUTE_SWITCH_METERS = 200; // meters - how much distance must be saved
 
 export const MAX_TRIP_LEGS = 10;
+
