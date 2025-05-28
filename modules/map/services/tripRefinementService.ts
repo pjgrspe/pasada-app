@@ -1,6 +1,6 @@
 // pasada-gemini/modules/map/services/tripRefinementService.ts
 import { Coordinate, PlannedTripLeg, JeepneyRoute } from '../utils/routeTypes';
-import { getJeepneyRouteById, getAllJeepneyRoutes } from './jeepneyDataService'; // Added getAllJeepneyRoutes
+import { getJeepneyRouteById } from './jeepneyDataService';
 import { getWalkingDirections, calculateDistance, findNearestPointOnRoute } from './mapApiServices';
 import { calculateDistanceOfPolyline } from '../utils/mapHelpers';
 import {
@@ -12,9 +12,7 @@ import {
     MAX_WALK_TO_JEEP_METERS,
     MAX_FINAL_WALK_METERS,
     OVERLAP_CUT_THRESHOLD_METERS,
-    OVERLAP_WALK_POINTS_TO_CHECK_V7,
-    DIRECT_BOARDING_PROXIMITY_THRESHOLD, // Ensure this is added to constants
-    MIN_SAVING_FOR_DIRECT_ROUTE_SWITCH_METERS // Ensure this is added to constants
+    OVERLAP_WALK_POINTS_TO_CHECK_V7
 } from '../constants/tripPlanningConstants';
 import { trimJeepLeg } from '../utils/tripUtils';
 
@@ -97,14 +95,10 @@ async function _refineOverlappingWalkAfterJeep(
                 calculateDistance(closestJeepPointToWalk, prevJeepRouteDef.coordinates[jeepSegmentIdx])) {
                 jeepVertexIdxOfClosestOverlap = jeepSegmentIdx + 1;
             }
-            // Ensure the index is valid
-             if (jeepVertexIdxOfClosestOverlap < 0 || jeepVertexIdxOfClosestOverlap >= prevJeepRouteDef.coordinates.length) {
-                continue;
-            }
-
+            jeepVertexIdxOfClosestOverlap = Math.max(0, Math.min(jeepVertexIdxOfClosestOverlap, prevJeepRouteDef.coordinates.length - 1));
 
             if (calculateDistance(walkPoint, prevJeepRouteDef.coordinates[jeepVertexIdxOfClosestOverlap]) < OVERLAP_CUT_THRESHOLD_METERS &&
-                jeepVertexIdxOfClosestOverlap < originalJeepAlightIndexOnFullRoute) { // Ensure we are not going backward on the jeep route unintentionally
+                jeepVertexIdxOfClosestOverlap < originalJeepAlightIndexOnFullRoute) {
                 actualNewAlightPointForJeep = prevJeepRouteDef.coordinates[jeepVertexIdxOfClosestOverlap];
                 newAlightFullRouteIndexForJeep = jeepVertexIdxOfClosestOverlap;
                 break;
@@ -340,189 +334,23 @@ async function _refineTransferWalk(
     return { updatedPrevJeepLeg: refinedPrevJeep, refinedWalkLeg: refinedTransferWalk, updatedNextJeepLeg: refinedNextJeep };
 }
 
-/**
- * NEW REFINEMENT FUNCTION
- * Checks if a sequence of Walk -> Jeep1 -> Walk -> Jeep2 can be simplified to
- * Walk -> Jeep2, by boarding Jeep2 earlier.
- */
-async function _attemptDirectRouteOptimization(
-    originalLegs: PlannedTripLeg[],
-    finalDestination: Coordinate // Used for context if needed, not directly for this optimization
-): Promise<{ legs: PlannedTripLeg[], changed: boolean }> {
-    // Check if the pattern for this optimization exists: Walk -> Jeep1 -> Walk -> Jeep2
-    if (originalLegs.length < 4 ||
-        originalLegs[0].type !== 'walk' ||
-        originalLegs[1].type !== 'jeepney' ||
-        originalLegs[2].type !== 'walk' ||
-        originalLegs[3].type !== 'jeepney') {
-        return { legs: originalLegs, changed: false };
-    }
-
-    const initialWalk = originalLegs[0];
-    const firstJeep = originalLegs[1];
-    // const transferWalk = originalLegs[2]; // We'll compare against the sum of these
-    const secondJeep = originalLegs[3];
-
-    if (!secondJeep.routeId) {
-        // console.warn("[DirectRouteOpt] Second jeep leg has no routeId.");
-        return { legs: originalLegs, changed: false };
-    }
-
-    const secondJeepRouteDef = getJeepneyRouteById(secondJeep.routeId);
-    if (!secondJeepRouteDef || !secondJeepRouteDef.coordinates || secondJeepRouteDef.coordinates.length < 2) {
-        // console.warn(`[DirectRouteOpt] Second jeep route definition not found or invalid for ${secondJeep.routeId}.`);
-        return { legs: originalLegs, changed: false };
-    }
-
-    const tripOrigin = initialWalk.coordinates[0];
-    // The point where the user currently boards the *first* jeep.
-    const firstJeepBoardPoint = initialWalk.coordinates[initialWalk.coordinates.length - 1];
-
-    // Find the closest point on the *second* jeep's route to where the first jeep was boarded.
-    const {
-        pointOnPolyline: potentialDirectBoardOnSecondJeepRoute,
-        segmentIndex: directBoardSegmentIdxOnSecondJeep,
-        distanceToPoint: walkDistToPotentialBoardPoint // This is the distance from firstJeepBoardPoint to secondJeepRouteDef
-    } = findNearestPointOnRoute(firstJeepBoardPoint, secondJeepRouteDef);
-
-
-    // If the second jeep route doesn't pass close enough to the first jeep's boarding point, this optimization isn't viable.
-    if (walkDistToPotentialBoardPoint > DIRECT_BOARDING_PROXIMITY_THRESHOLD) {
-        // console.log(`[DirectRouteOpt] Second jeep route too far from first jeep's boarding point (${walkDistToPotentialBoardPoint.toFixed(0)}m).`);
-        return { legs: originalLegs, changed: false };
-    }
-
-    // Determine the actual vertex on the second jeep route for boarding
-    // This ensures we snap to an actual coordinate on the route.
-    let actualDirectBoardingVertexIndex = directBoardSegmentIdxOnSecondJeep;
-    if (directBoardSegmentIdxOnSecondJeep + 1 < secondJeepRouteDef.coordinates.length &&
-        calculateDistance(potentialDirectBoardOnSecondJeepRoute, secondJeepRouteDef.coordinates[directBoardSegmentIdxOnSecondJeep + 1]) <
-        calculateDistance(potentialDirectBoardOnSecondJeepRoute, secondJeepRouteDef.coordinates[directBoardSegmentIdxOnSecondJeep])) {
-        actualDirectBoardingVertexIndex = directBoardSegmentIdxOnSecondJeep + 1;
-    }
-    actualDirectBoardingVertexIndex = Math.max(0, Math.min(actualDirectBoardingVertexIndex, secondJeepRouteDef.coordinates.length - 1));
-    const actualDirectBoardingCoordinate = secondJeepRouteDef.coordinates[actualDirectBoardingVertexIndex];
-
-    // The alighting point for this new direct jeep ride should be the same as the original secondJeep's alighting point.
-    const originalAlightFromSecondJeepPoint = secondJeep.coordinates[secondJeep.coordinates.length - 1];
-    const { segmentIndex: originalAlightSegmentIdxOnSecondJeepRoute } = findNearestPointOnRoute(originalAlightFromSecondJeepPoint, secondJeepRouteDef);
-    let originalAlightVertexIndexOnSecondJeepRoute = originalAlightSegmentIdxOnSecondJeepRoute;
-     if (originalAlightSegmentIdxOnSecondJeepRoute + 1 < secondJeepRouteDef.coordinates.length &&
-        calculateDistance(originalAlightFromSecondJeepPoint, secondJeepRouteDef.coordinates[originalAlightSegmentIdxOnSecondJeepRoute + 1]) <
-        calculateDistance(originalAlightFromSecondJeepPoint, secondJeepRouteDef.coordinates[originalAlightSegmentIdxOnSecondJeepRoute])) {
-        originalAlightVertexIndexOnSecondJeepRoute = originalAlightSegmentIdxOnSecondJeepRoute + 1;
-    }
-    originalAlightVertexIndexOnSecondJeepRoute = Math.max(0, Math.min(originalAlightVertexIndexOnSecondJeepRoute, secondJeepRouteDef.coordinates.length - 1));
-
-
-    // Check for valid progression on the second jeep route (board before alight, considering loops)
-    let isRideOnSecondJeepValid = false;
-    if (secondJeepRouteDef.isLooping && typeof secondJeepRouteDef.loopConnectIndex === 'number') {
-        // If it's a loop, a ride is valid if it makes progress, even if index wraps
-        isRideOnSecondJeepValid = true; // Simplified: assume trimJeepLeg handles loop logic correctly
-    } else {
-        isRideOnSecondJeepValid = actualDirectBoardingVertexIndex < originalAlightVertexIndexOnSecondJeepRoute;
-    }
-
-    if (!isRideOnSecondJeepValid) {
-        // console.log(`[DirectRouteOpt] Invalid progression on second jeep route (board index ${actualDirectBoardingVertexIndex} vs alight index ${originalAlightVertexIndexOnSecondJeepRoute}).`);
-        return { legs: originalLegs, changed: false };
-    }
-
-    // Create the new initial walk leg: from tripOrigin to the new direct boarding point on the second jeep route.
-    const newOptimizedInitialWalk = await getWalkingDirections(tripOrigin, actualDirectBoardingCoordinate);
-    if (!newOptimizedInitialWalk || (newOptimizedInitialWalk.distance as number) > MAX_WALK_TO_JEEP_METERS * 1.5) { // Allow slightly longer initial walk
-        // console.log(`[DirectRouteOpt] New initial walk too long or failed (${newOptimizedInitialWalk?.distance}).`);
-        return { legs: originalLegs, changed: false };
-    }
-
-    // Create the new direct jeep leg using the second jeep's route
-    const newDirectJeepRideCoordinates = trimJeepLeg(
-        secondJeepRouteDef.coordinates,
-        actualDirectBoardingCoordinate,
-        originalAlightFromSecondJeepPoint, // Alight where the original second jeep was supposed to
-        actualDirectBoardingVertexIndex,
-        originalAlightVertexIndexOnSecondJeepRoute,
-        secondJeepRouteDef.isLooping,
-        secondJeepRouteDef.loopConnectIndex
-    );
-
-    if (!newDirectJeepRideCoordinates || newDirectJeepRideCoordinates.length < 2) {
-        // console.log("[DirectRouteOpt] Failed to trim new direct jeep leg.");
-        return { legs: originalLegs, changed: false };
-    }
-
-    const newDirectJeepRideDist = calculateDistanceOfPolyline(newDirectJeepRideCoordinates);
-    const newDirectJeepRideDuration = (newDirectJeepRideDist / (12 * 1000 / 3600)); // Approx duration
-
-    const newDirectJeepLeg: PlannedTripLeg = {
-        type: 'jeepney',
-        coordinates: newDirectJeepRideCoordinates,
-        routeName: secondJeepRouteDef.name,
-        routeId: secondJeepRouteDef.id,
-        routeColor: secondJeepRouteDef.color,
-        instructions: `Take ${secondJeepRouteDef.name} directly (optimized).`,
-        distance: newDirectJeepRideDist,
-        duration: newDirectJeepRideDuration,
-        jeepBoardingPointInfo: `Board ${secondJeepRouteDef.name} (optimized direct)`,
-        jeepAlightingPointInfo: `Alight from ${secondJeepRouteDef.name}`,
-        jeepLegFullRouteStartIndex: actualDirectBoardingVertexIndex,
-        jeepLegFullRouteEndIndex: originalAlightVertexIndexOnSecondJeepRoute,
-        isTerminalBoarding: actualDirectBoardingVertexIndex === 0,
-    };
-
-    // Compare costs
-    const originalPlanSegmentDistance = (initialWalk.distance as number || 0) +
-                                     (firstJeep.distance as number || 0) +
-                                     (originalLegs[2].distance as number || 0); // original transferWalk distance
-
-    const newPlanSegmentDistance = (newOptimizedInitialWalk.distance as number || 0) +
-                                 (newDirectJeepLeg.distance as number || 0);
-
-    if (newPlanSegmentDistance < originalPlanSegmentDistance - MIN_SAVING_FOR_DIRECT_ROUTE_SWITCH_METERS) {
-        const newTripLegs: PlannedTripLeg[] = [newOptimizedInitialWalk, newDirectJeepLeg];
-        // Append remaining legs from the original plan (i.e., legs after the original secondJeep)
-        if (originalLegs.length > 4) { // If there were legs after originalLegs[3] (the secondJeep)
-            newTripLegs.push(...originalLegs.slice(4));
-        }
-        // console.log(`[DirectRouteOpt] Applied optimization. Original segment: ${originalPlanSegmentDistance.toFixed(0)}m, New segment: ${newPlanSegmentDistance.toFixed(0)}m`);
-        return { legs: newTripLegs, changed: true };
-    }
-    // console.log(`[DirectRouteOpt] Optimization not applied. Original: ${originalPlanSegmentDistance.toFixed(0)}m, New: ${newPlanSegmentDistance.toFixed(0)}m. Saving not met.`);
-    return { legs: originalLegs, changed: false };
-}
-
 
 /**
- * Main function to apply various refinement strategies to a list of planned trip legs.
+ * Main orchestrator for refining trip legs. Renamed from refineTripLegsOrchestrator.
  */
 export async function postProcessTripLegs(
     legs: PlannedTripLeg[],
     finalDestination: Coordinate
 ): Promise<PlannedTripLeg[]> {
     if (legs.length === 0) return legs;
-    let refinedLegs: PlannedTripLeg[] = JSON.parse(JSON.stringify(legs));
+    let refinedLegs: PlannedTripLeg[] = JSON.parse(JSON.stringify(legs)); // Deep copy for mutation
 
-    const MAX_REFINEMENT_ITERATIONS = 3; // Iterate to allow refinements to influence each other
+    const MAX_REFINEMENT_ITERATIONS = 3;
     for (let iter = 0; iter < MAX_REFINEMENT_ITERATIONS; iter++) {
         let legsChangedInIteration = false;
         const currentIterationLegs: PlannedTripLeg[] = JSON.parse(JSON.stringify(refinedLegs));
 
-        // Attempt the new direct route optimization first if applicable
-        const directRouteOptimizationResult = await _attemptDirectRouteOptimization(currentIterationLegs, finalDestination);
-        if (directRouteOptimizationResult.changed) {
-            refinedLegs = directRouteOptimizationResult.legs;
-            // console.log(`[PostProcess] Iteration ${iter + 1}: Applied direct route optimization. Restarting iteration.`);
-            legsChangedInIteration = true; // Mark that a significant change happened
-             // If direct route optimization changed the number of legs, we should restart the outer loop
-             // with the new set of legs to ensure subsequent refinements work correctly on the new structure.
-            continue; // Effectively restarts the iteration with the modified `refinedLegs`
-        }
-
-
-        // Proceed with other leg-by-leg refinements
         for (let i = 0; i < currentIterationLegs.length; i++) {
-            // Refine overlapping walk after a jeep
             if (currentIterationLegs[i].type === 'walk' && i > 0 && currentIterationLegs[i - 1]?.type === 'jeepney') {
                 const { updatedPrevJeepLeg, updatedWalkLeg } = await _refineOverlappingWalkAfterJeep(
                     currentIterationLegs[i - 1],
@@ -535,8 +363,7 @@ export async function postProcessTripLegs(
                 }
             }
 
-            // Refine current walk leg (initial, transfer, or final)
-            const legToRefine = currentIterationLegs[i]; // Use potentially updated leg
+            const legToRefine = currentIterationLegs[i];
             if (legToRefine.type === 'walk') {
                  if (i === 0 && currentIterationLegs.length > 1 && currentIterationLegs[i+1]?.type === 'jeepney') {
                     const { refinedWalkLeg, updatedNextJeepLeg } = await _refineInitialWalk(legToRefine, currentIterationLegs[i+1]);
@@ -563,12 +390,12 @@ export async function postProcessTripLegs(
                 }
             }
         }
-        refinedLegs = JSON.parse(JSON.stringify(currentIterationLegs)); // Update main refinedLegs
+        refinedLegs = JSON.parse(JSON.stringify(currentIterationLegs));
         if (!legsChangedInIteration) {
-            // console.log(`[PostProcess] No changes in iteration ${iter + 1}. Finishing refinement.`);
+            // console.log(`[PostProcessTripLegs] No changes in iteration ${iter + 1}. Finishing.`);
             break;
         }
-        // console.log(`[PostProcess] Completed iteration ${iter + 1}. Legs changed: ${legsChangedInIteration}`);
+        // console.log(`[PostProcessTripLegs] Completed iteration ${iter + 1}. Legs changed: ${legsChangedInIteration}`);
     }
 
     const finalFilteredLegs = refinedLegs.filter(leg =>
@@ -579,6 +406,6 @@ export async function postProcessTripLegs(
             (leg.type === 'jeepney' && typeof leg.distance === 'number' && leg.distance > 10)
         )
     );
-    // console.log(`[PostProcess] Final refined legs count: ${finalFilteredLegs.length}`);
+    // console.log(`[PostProcessTripLegs] Final refined legs count: ${finalFilteredLegs.length}`);
     return finalFilteredLegs;
 }
