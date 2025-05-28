@@ -34,7 +34,7 @@ import { Coordinate, PlannedTripLeg } from '@/modules/map/utils/routeTypes';
 
 import { useTheme } from '@/hooks/useTheme';
 import { useTripStore } from '@/modules/map/store/useTripStore';
-import { sampleTrip, sampleTrip2 } from '@/modules/map/utils/DebugTestTrip';
+import * as DebugTestTrip from '@/modules/map/utils/DebugTestTrip';
 import { Text } from '@/components/Themed';
 
 const initialMapRegion: Region = {
@@ -180,10 +180,10 @@ export default function DashboardScreen() {
         setStartPointQuery("Sample Start Location"); 
         setDestinationQuery("Sample End Location (AUF)"); 
 
-        if (sampleTrip.startPoint && sampleTrip.endPoint) {
+        if (DebugTestTrip.sampleTrip.startPoint && DebugTestTrip.sampleTrip.endPoint) {
             planAndDisplayTrip(
-                sampleTrip.startPoint,
-                sampleTrip.endPoint,
+                DebugTestTrip.sampleTrip.startPoint,
+                DebugTestTrip.sampleTrip.endPoint,
                 "Sample Start: Diamond subd", 
                 "Sample End: AUF Area"       
             );
@@ -198,10 +198,10 @@ export default function DashboardScreen() {
         setStartPointQuery("Sample Start Location (AUF)"); 
         setDestinationQuery("Sample End Location (Diamond subd)"); 
 
-        if (sampleTrip.startPoint && sampleTrip.endPoint) {
+        if (DebugTestTrip.sampleTrip.startPoint && DebugTestTrip.sampleTrip.endPoint) {
             planAndDisplayTrip(
-                sampleTrip.endPoint,
-                sampleTrip.startPoint,
+                DebugTestTrip.sampleTrip.endPoint,
+                DebugTestTrip.sampleTrip.startPoint,
                 "Sample Start: AUF Area", 
                 "Sample End: Diamond subd"       
             );
@@ -216,10 +216,10 @@ export default function DashboardScreen() {
         setStartPointQuery("Sample Start Location"); 
         setDestinationQuery("Sample End Location"); 
 
-        if (sampleTrip.startPoint && sampleTrip.endPoint) {
+        if (DebugTestTrip.sampleTrip2.startPoint && DebugTestTrip.sampleTrip2.endPoint) {
             planAndDisplayTrip(
-                sampleTrip2.endPoint,
-                sampleTrip2.startPoint,
+                DebugTestTrip.sampleTrip2.endPoint,
+                DebugTestTrip.sampleTrip2.startPoint,
                 "Sample Start:", 
                 "Sample End:"       
             );
@@ -234,12 +234,30 @@ export default function DashboardScreen() {
         setStartPointQuery("Sample Start Location"); 
         setDestinationQuery("Sample End Location"); 
 
-        if (sampleTrip.startPoint && sampleTrip.endPoint) {
+        if (DebugTestTrip.sampleTrip2.startPoint && DebugTestTrip.sampleTrip2.endPoint) {
             planAndDisplayTrip(
-                sampleTrip2.startPoint,
-                sampleTrip2.endPoint,
+                DebugTestTrip.sampleTrip2.startPoint,
+                DebugTestTrip.sampleTrip2.endPoint,
                 "Sample Start:", 
                 "Sample End:"       
+            );
+        } else {
+            Alert.alert("Test Error", "Sample trip data from DebugTestTrip.ts is incomplete or not loaded.");
+        }
+    };
+
+    const handleTestSampleTripButton5 = () => {
+        // ... (function remains the same) ...
+        console.log("Test Sample Trip (Dev) button pressed. Planning with predefined sample data.");
+        setStartPointQuery("Sample Start Location"); 
+        setDestinationQuery("Sample End Location"); 
+
+        if (DebugTestTrip.sampleTrip3.startPoint && DebugTestTrip.sampleTrip3.endPoint) {
+            planAndDisplayTrip(
+                DebugTestTrip.sampleTrip3.startPoint,
+                DebugTestTrip.sampleTrip3.endPoint,
+                "Sample Start:", 
+                "Sample End: AUF"       
             );
         } else {
             Alert.alert("Test Error", "Sample trip data from DebugTestTrip.ts is incomplete or not loaded.");
@@ -295,6 +313,7 @@ export default function DashboardScreen() {
                         <RNButton title="Test 2 Sample Trip (Dev)" onPress={handleTestSampleTripButton2} color={isDarkMode ? colors.accent : colors.primary} />
                         <RNButton title="Test 3 Sample Trip (Dev)" onPress={handleTestSampleTripButton3} color={isDarkMode ? colors.accent : colors.primary} />
                         <RNButton title="Test 4 Sample Trip (Dev)" onPress={handleTestSampleTripButton4} color={isDarkMode ? colors.accent : colors.primary} />
+                        <RNButton title="Test 5 Sample Trip (Dev)" onPress={handleTestSampleTripButton5} color={isDarkMode ? colors.accent : colors.primary} />
                     </View>
                 );
             case 'planning_inputs':

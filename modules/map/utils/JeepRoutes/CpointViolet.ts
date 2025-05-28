@@ -1,4 +1,7 @@
-export const CheckpointViolet = [
+import { Coordinate, JeepneyRoute } from '../routeTypes';
+
+
+const checkpointVioletCoordinates: Coordinate[] = [
     { longitude: 120.58716, latitude: 15.16926 },
     { longitude: 120.5874, latitude: 15.16933 },
     { longitude: 120.5876, latitude: 15.16938 },
@@ -386,4 +389,11 @@ export const CheckpointViolet = [
     { longitude: 120.58041, latitude: 15.16695 },
     { longitude: 120.5802, latitude: 15.16689 }
 ];
+
+export const CheckpointViolet: JeepneyRoute = {
+    id: 'checkpoint-violet',
+    name: 'Check point - Highway',
+    coordinates: checkpointVioletCoordinates,
+    color: '#5b4dad'
+};
 

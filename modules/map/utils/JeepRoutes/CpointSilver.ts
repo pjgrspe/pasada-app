@@ -1,10 +1,11 @@
-export const CheckpointSilver = [
-  { longitude: 120.58232, latitude: 15.16852 },
-  { longitude: 120.58231, latitude: 15.16852 },
-  { longitude: 120.58231, latitude: 15.16853 },
-  { longitude: 120.58231, latitude: 15.16854 },
-  { longitude: 120.58231, latitude: 15.16855 },
-  { longitude: 120.58232, latitude: 15.16888 },
+import { Coordinate, JeepneyRoute } from '../routeTypes';
+
+const checkpointSilverCoordinates: Coordinate[] = [
+  { longitude: 120.5821, latitude: 15.16884 },
+  { longitude: 120.58211, latitude: 15.16892 },
+  { longitude: 120.58211, latitude: 15.1691 },
+  { longitude: 120.58211, latitude: 15.16925 },
+  { longitude: 120.58222, latitude: 15.16924 },
   { longitude: 120.58233, latitude: 15.16925 },
   { longitude: 120.58256, latitude: 15.16925 },
   { longitude: 120.58278, latitude: 15.16925 },
@@ -309,15 +310,17 @@ export const CheckpointSilver = [
   { longitude: 120.58327, latitude: 15.16798 },
   { longitude: 120.58315, latitude: 15.16795 },
   { longitude: 120.58299, latitude: 15.1679 },
-  { longitude: 120.58295, latitude: 15.16807 },
-  { longitude: 120.58278, latitude: 15.16925 },
-  { longitude: 120.58256, latitude: 15.16925 },
-  { longitude: 120.58233, latitude: 15.16925 },
-  { longitude: 120.58232, latitude: 15.16888 },
-  { longitude: 120.58231, latitude: 15.16855 },
-  { longitude: 120.58231, latitude: 15.16854 },
-  { longitude: 120.58231, latitude: 15.16853 },
-  { longitude: 120.58231, latitude: 15.16852 },
-  { longitude: 120.58232, latitude: 15.16852 }
-
+  { longitude: 120.58254, latitude: 15.16774 },
+  { longitude: 120.58201, latitude: 15.16756 },
+  { longitude: 120.58066, latitude: 15.16703 },
+  { longitude: 120.58041, latitude: 15.16695 },
+  { longitude: 120.58012, latitude: 15.16687 },
 ];
+
+export const CheckpointSilver: JeepneyRoute = {
+    id: 'checkpoint-silver',
+    name: 'Check point - Holy Angel University',
+    coordinates: checkpointSilverCoordinates,
+    color: '#c2cad8'
+};
+
