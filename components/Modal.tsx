@@ -2,7 +2,7 @@
 import React from 'react';
 import { Modal as RNModal, View, StyleSheet, TouchableOpacity, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useTheme } from '../hooks/useTheme'; // Added
+import { useTheme } from '../hooks/useTheme';
 
 interface ModalProps {
   visible: boolean;
@@ -12,7 +12,15 @@ interface ModalProps {
 }
 
 const Modal: React.FC<ModalProps> = ({ visible, onClose, children, title }) => {
-  const { colors, isDarkMode } = useTheme(); // Added
+  const { colors, isDarkMode } = useTheme();
+
+  // Wrap string children in <Text>
+  const renderChildren = () =>
+    React.Children.map(children, child =>
+      typeof child === 'string'
+        ? <Text style={{ color: colors.text }}>{child}</Text>
+        : child
+    );
 
   return (
     <RNModal
@@ -22,23 +30,23 @@ const Modal: React.FC<ModalProps> = ({ visible, onClose, children, title }) => {
       onRequestClose={onClose}
     >
       <TouchableOpacity
-        style={[styles.backdrop, { backgroundColor: isDarkMode ? 'rgba(0, 0, 0, 0.8)' : 'rgba(0, 0, 0, 0.6)'}]} // Themed
+        style={[styles.backdrop, { backgroundColor: isDarkMode ? 'rgba(0, 0, 0, 0.8)' : 'rgba(0, 0, 0, 0.6)' }]}
         activeOpacity={1}
         onPressOut={onClose}
       >
         <TouchableOpacity
-          style={[styles.modalContentBase, { backgroundColor: colors.card }]} // Themed
+          style={[styles.modalContentBase, { backgroundColor: colors.card }]}
           activeOpacity={1}
-          onPress={(e) => e.stopPropagation()}
+          onPress={e => e.stopPropagation()}
         >
-          <View style={[styles.headerBase, { borderBottomColor: colors.border }]}> // Themed
-              <Text style={[styles.titleBase, { color: colors.text }]}>{title || 'Modal Title'}</Text> // Themed
-              <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-                 <Ionicons name="close" size={28} color={colors.text} style={{opacity: 0.7}} /> // Themed
-              </TouchableOpacity>
+          <View style={[styles.headerBase, { borderBottomColor: colors.border }]}>
+            <Text style={[styles.titleBase, { color: colors.text }]}>{title || 'Modal Title'}</Text>
+            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+              <Ionicons name="close" size={28} color={colors.text} style={{ opacity: 0.7 }} />
+            </TouchableOpacity>
           </View>
           <View style={styles.body}>
-            {children}
+            {renderChildren()}
           </View>
         </TouchableOpacity>
       </TouchableOpacity>
@@ -57,7 +65,7 @@ const styles = StyleSheet.create({
     padding: 20,
     width: '85%',
     maxHeight: '80%',
-    shadowColor: '#000', // Shadow color can remain black or be themed if desired
+    shadowColor: '#000',
     shadowOffset: {
       width: 0,
       height: 2,
@@ -67,22 +75,22 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   headerBase: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      borderBottomWidth: 1,
-      paddingBottom: 10,
-      marginBottom: 15,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    paddingBottom: 10,
+    marginBottom: 15,
   },
   titleBase: {
-      fontSize: 18,
-      fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight: 'bold',
   },
   closeButton: {
-      padding: 5,
+    padding: 5,
   },
   body: {
-      // Styles for the content area
+    // Styles for the content area
   }
 });
 
