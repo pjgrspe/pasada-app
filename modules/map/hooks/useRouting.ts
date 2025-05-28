@@ -1,48 +1,118 @@
-// pasada-app/modules/map/hooks/useRouting.ts
+// pasada-gemini/modules/map/hooks/useRouting.ts
 import { useState, useCallback } from 'react';
-import { useMapStore } from '../store/useMapStore';
-// import mapApiService from '../services/mapApiService'; // You'll create this
-
-interface Coordinate {
-  latitude: number;
-  longitude: number;
-}
+import { useMapStore, Route as MapRoute } from '../store/useMapStore';
+import mapApiService from '../services/mapApiServices';
+import { Coordinate, PlannedTripLeg } from '../utils/routeTypes';
+import { useTheme } from '@/hooks/useTheme';
+import { planTrip } from '../services/tripPlannerServices';
+// import { regionFromCoordinates } from '../utils/mapHelpers'; // Accessed via mapApiService
 
 export const useRouting = () => {
-  const { addRoute, setMapLoading, setMapError } = useMapStore();
-  const [isFetchingRoute, setIsFetchingRoute] = useState(false);
+  const { colors } = useTheme();
+  const {
+    addRoute,
+    clearRoutes,
+    setMapLoading,
+    setMapError,
+    setStartPoint,
+    setDestinationPoint,
+    setCurrentRegion,
+    clearRoutePoints,
+  } = useMapStore();
 
-  const fetchAndDisplayRoute = useCallback(async (start: Coordinate, end: Coordinate) => {
+  const [isFetchingRoute, setIsFetchingRoute] = useState(false);
+  const [currentPlannedTripLegs, setCurrentPlannedTripLegs] = useState<PlannedTripLeg[] | null>(null);
+
+  const planAndDisplayTrip = useCallback(async (
+    start: Coordinate,
+    end: Coordinate,
+    startMarkerTitle: string = 'Start',
+    endMarkerTitle: string = 'Destination'
+  ) => {
     setIsFetchingRoute(true);
     setMapLoading(true);
     setMapError(null);
-    try {
-      // const routeData = await mapApiService.getDirections(start, end);
-      // if (routeData && routeData.coordinates) {
-      //   const newRoute = { id: `route-${Date.now()}`, coordinates: routeData.coordinates };
-      //   addRoute(newRoute);
-      // } else {
-      //   throw new Error("No route data received");
-      // }
-      console.warn("useRouting: fetchAndDisplayRoute is a placeholder. Implement actual API call.");
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      const mockRoute = {
-        id: `route-${Date.now()}`,
-        coordinates: [start, {latitude: (start.latitude + end.latitude)/2, longitude: (start.longitude + end.longitude)/2 } , end]
-      };
-      addRoute(mockRoute);
+    clearRoutes();
+    clearRoutePoints(); // This clears start/dest markers and routes from store
+    setCurrentPlannedTripLegs(null); // Clear previous textual instructions
 
+    // Set new start and destination markers
+    setStartPoint({ id: 'startPoint', coordinate: start, title: startMarkerTitle, pinColor: colors.success });
+    setDestinationPoint({ id: 'destinationPoint', coordinate: end, title: endMarkerTitle, pinColor: colors.error });
+
+    try {
+      const tripOptions = await planTrip(start, end);
+
+      if (tripOptions && tripOptions.length > 0) {
+        const selectedTripLegs = tripOptions[0];
+        setCurrentPlannedTripLegs(selectedTripLegs);
+
+        let combinedCoordinatesForRegion: Coordinate[] = [];
+
+        selectedTripLegs.forEach((leg, index) => {
+          const routeForMap: MapRoute = {
+            id: `${leg.type}-${leg.routeId || 'walk'}-${Date.now()}-${index}`,
+            coordinates: leg.coordinates,
+            routeType: leg.type, // Make sure your MapRoute interface in useMapStore has this
+            color: leg.type === 'jeepney'
+                   ? leg.routeColor || colors.primary
+                   : colors.secondary, // Make sure your MapRoute interface in useMapStore has this
+            routeName: leg.routeName,
+          };
+          addRoute(routeForMap);
+          if (leg.coordinates && leg.coordinates.length > 0) {
+            combinedCoordinatesForRegion = [...combinedCoordinatesForRegion, ...leg.coordinates];
+          }
+        });
+
+        if (combinedCoordinatesForRegion.length > 0) {
+            const newRegion = mapApiService.regionFromCoordinates(combinedCoordinatesForRegion, 0.3);
+            if (newRegion) {
+                setCurrentRegion(newRegion);
+            }
+        } else {
+            const fallbackRegion = mapApiService.regionFromCoordinates([start, end], 0.5);
+            if (fallbackRegion) setCurrentRegion(fallbackRegion);
+        }
+
+      } else {
+        setMapError("No suitable routes found. Try adjusting start/end points.");
+      }
     } catch (error: any) {
-      setMapError(error.message || 'Failed to fetch route');
+      console.error("Error in planAndDisplayTrip:", error);
+      setMapError(error.message || 'Failed to plan trip');
     } finally {
       setIsFetchingRoute(false);
       setMapLoading(false);
     }
-  }, [addRoute, setMapLoading, setMapError]);
+  }, [
+      colors.primary,
+      colors.secondary,
+      colors.success,
+      colors.error,
+      addRoute,
+      clearRoutes,
+      setMapLoading,
+      setMapError,
+      setStartPoint,
+      setDestinationPoint,
+      setCurrentRegion,
+      clearRoutePoints
+    ]
+  );
+
+  // New function to clear displayed trip legs
+  const clearDisplayedTripInfo = useCallback(() => {
+    setCurrentPlannedTripLegs(null);
+    // clearRoutes(); // Optionally also clear polylines from map
+    // clearRoutePoints(); // Optionally also clear markers
+    // Decide if this function should also clear map elements or just the textual instructions
+  }, [/* clearRoutes, clearRoutePoints */]); // Add dependencies if they clear map elements
 
   return {
     isFetchingRoute,
-    fetchAndDisplayRoute,
+    planAndDisplayTrip,
+    currentPlannedTripLegs,
+    clearDisplayedTripInfo, // Expose the new function
   };
 };

@@ -1,24 +1,23 @@
-// app/(tabs)/profile/_layout.tsx
+// Modify: pasada-app/app/(tabs)/profile/_layout.tsx
 import React from 'react';
 import { Stack } from 'expo-router';
-import { useTheme } from '../../../hooks/useTheme'; // Import hook
+import ScreenHeader from '../../../components/ScreenHeader'; // Import the new header
 
 export default function ProfileLayout() {
-    const { colors } = useTheme(); // Get theme colors
     return (
-        <Stack
-             screenOptions={{
-                // --- Apply Theme Colors ---
-                headerStyle: { backgroundColor: colors.header },
-                headerTintColor: colors.headerText,
-                headerTitleStyle: {
-                    fontWeight: 'bold',
-                },
-                // --------------------------
-            }}
-        >
-            <Stack.Screen name="index" options={{ title: 'Profile & Settings' }} /> {/* Updated Title */}
-            <Stack.Screen name="edit" options={{ title: 'Edit Profile' }} />
+        <Stack>
+            <Stack.Screen
+                name="index"
+                options={{
+                    header: () => <ScreenHeader title="Profile & Settings" />,
+                }}
+            />
+            <Stack.Screen
+                name="edit"
+                options={{
+                    header: () => <ScreenHeader title="Edit Profile" showBackButton={true}/>,
+                }}
+            />
         </Stack>
     );
 }

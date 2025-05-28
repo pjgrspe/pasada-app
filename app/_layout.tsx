@@ -3,50 +3,48 @@ import React, { useEffect } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { ActivityIndicator, View, StyleSheet } from 'react-native';
 import { ThemeProvider } from '@react-navigation/native';
-import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth'; // Import onAuthStateChanged and FirebaseUser
-import { useTheme } from '../hooks/useTheme';
+import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
+import { useTheme } from '../hooks/useTheme'; // useTheme is already here
 import { AppLightTheme, AppDarkTheme } from '../utils/navigationThemes';
-import { useAuthStore } from '../modules/auth/store/useAuthStore'; // Import directly for listener setup
-import { auth as firebaseAuth } from '../FirebaseConfig'; // Import Firebase auth instance
+import { useAuthStore } from '../modules/auth/store/useAuthStore';
+import { auth as firebaseAuth } from '../FirebaseConfig';
 
 export default function GlobalLayout() {
-    const { isAuthenticated, isInitialized, _setUser } = useAuthStore(); // Get _setUser from the store
+    const { isAuthenticated, isInitialized, _setUser } = useAuthStore();
     const segments = useSegments();
     const router = useRouter();
-    const { activeTheme } = useTheme();
+    const { activeTheme, colors } = useTheme(); // Destructure colors
 
     useEffect(() => {
-        // Subscribe to Firebase auth state changes
         const unsubscribe = onAuthStateChanged(firebaseAuth, (firebaseUser: FirebaseUser | null) => {
-            console.log("Auth state changed, Firebase user:", firebaseUser?.email || null);
-            _setUser(firebaseUser); // Update the store with the new user state
+            _setUser(firebaseUser);
         });
-
-        return () => unsubscribe(); // Cleanup subscription on unmount
-    }, [_setUser]); // _setUser is stable, so this effect runs once on mount
+        return () => unsubscribe();
+    }, [_setUser]);
 
     useEffect(() => {
         if (!isInitialized) {
-            console.log("Auth not initialized yet by onAuthStateChanged, waiting...");
             return;
         }
-
         const inAuthGroup = segments[0] === 'auth';
-        console.log(`Auth Initialized: ${isInitialized}, Authenticated: ${isAuthenticated}, In Auth Group: ${inAuthGroup}`);
-
         if (!isAuthenticated && !inAuthGroup) {
-            console.log("Redirecting to /auth/login");
             router.replace('/auth/login');
         } else if (isAuthenticated && inAuthGroup) {
-            console.log("Redirecting to /(tabs)");
             router.replace('/(tabs)');
         }
     }, [isAuthenticated, isInitialized, segments, router]);
 
     if (!isInitialized) {
+        // Use themed background for the initial loader
+        // Note: `colors` might not be fully initialized if `useTheme` itself depends on async storage for themeMode.
+        // A truly flicker-free initial screen often uses a static splash screen configured natively,
+        // or a very simple initial component that doesn't rely on async theme state.
+        // However, for this loader, if `useTheme` provides colors synchronously (e.g. default system theme), this works.
+        const initialBackgroundColor = activeTheme === 'dark' ? '#1C1C1E' : '#F8F8F8'; // Fallback if colors is not ready
+
         return (
-            <View style={styles.loaderContainer}>
-                <ActivityIndicator size="large" color="#FF8C00" />
+            <View style={[styles.loaderContainer, { backgroundColor: colors ? colors.background : initialBackgroundColor }]}>
+                <ActivityIndicator size="large" color={colors ? colors.primary : "#FF8C00"} />
             </View>
         );
     }
@@ -56,18 +54,15 @@ export default function GlobalLayout() {
             <Stack>
                 <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
                 <Stack.Screen name="auth" options={{ headerShown: false }} />
-                {/* Add other global screens here if any, e.g., a modal */}
-                {/* <Stack.Screen name="modal" options={{ presentation: 'modal' }} /> */}
             </Stack>
         </ThemeProvider>
     );
 }
 
 const styles = StyleSheet.create({
-    loaderContainer: {
+    loaderContainer: { // Style will be merged with themed backgroundColor
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: '#1C1C1E',
     },
 });

@@ -1,25 +1,31 @@
 // components/Input.tsx
-import React, { useState } from 'react';
+import React from 'react';
 import { TextInput, StyleSheet, View, TextInputProps, ViewStyle, Platform } from 'react-native';
-import { Ionicons } from '@expo/vector-icons'; // Optional: for icon support
+import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../hooks/useTheme'; // Added
 
 interface InputProps extends TextInputProps {
   containerStyle?: ViewStyle;
   iconName?: React.ComponentProps<typeof Ionicons>['name'];
-  iconColor?: string;
+  iconColor?: string; // Can be overridden by prop
 }
 
-const Input: React.FC<InputProps> = ({ containerStyle, iconName, iconColor = '#888', style, ...props }) => {
+const Input: React.FC<InputProps> = ({ containerStyle, iconName, iconColor, style, ...props }) => {
+  const { colors } = useTheme(); // Added
 
   return (
     <View style={[
-      styles.inputContainer,
+      styles.inputContainerBase,
+      {
+        backgroundColor: colors.inputBackground, // Themed
+        borderColor: colors.border,             // Themed
+      },
       containerStyle,
     ]}>
-      {iconName && <Ionicons name={iconName} size={20} color={iconColor} style={styles.icon} />}
+      {iconName && <Ionicons name={iconName} size={20} color={iconColor || colors.text} style={styles.icon} />}
       <TextInput
-        style={[styles.inputField, style]}
-        placeholderTextColor="#888"
+        style={[styles.inputFieldBase, { color: colors.inputText }, style]} // Themed
+        placeholderTextColor={colors.text + '80'} // Themed placeholder (e.g., text color with some transparency)
         {...props}
       />
     </View>
@@ -27,37 +33,19 @@ const Input: React.FC<InputProps> = ({ containerStyle, iconName, iconColor = '#8
 };
 
 const styles = StyleSheet.create({
-  inputContainer: {
+  inputContainerBase: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#3A3A3C', // Dark input background
     borderRadius: 10,
     paddingHorizontal: 15,
     marginVertical: 8,
     borderWidth: 1,
-    borderColor: '#4A4A4C', // Subtle border
-  },
-  inputContainerFocused: {
-    borderColor: '#007AFF', // Example focus color (iOS blue)
-    // You can add other focus styles like shadow for Android if needed
-    ...Platform.select({
-      ios: {
-        shadowColor: '#007AFF',
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.5,
-        shadowRadius: 3,
-      },
-      android: {
-        elevation: 2, // Add a slight elevation for Android
-      },
-    }),
   },
   icon: {
     marginRight: 10,
   },
-  inputField: {
+  inputFieldBase: {
     flex: 1,
-    color: '#FFFFFF',
     fontSize: 16,
     paddingVertical: 12,
   },
