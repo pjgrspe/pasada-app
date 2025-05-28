@@ -1,13 +1,13 @@
 // app/(tabs)/profile/index.tsx
 import React, { useState } from 'react';
-import { 
-    View, 
-    Text, 
-    StyleSheet, 
-    Alert, 
-    ScrollView, 
-    TouchableOpacity, 
-    Switch, 
+import {
+    View,
+    Text,
+    StyleSheet,
+    Alert,
+    ScrollView,
+    TouchableOpacity,
+    Switch,
     SafeAreaView,
     Animated,
     Dimensions,
@@ -19,7 +19,6 @@ import {
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 
@@ -38,22 +37,19 @@ const ProfileScreen = () => {
     const { colors, themeMode, setThemeMode, isDarkMode } = useTheme();
     const { user, logout, isLoading: authIsLoading } = useAuth();
 
-    // --- Enhanced State ---
     const [isModalVisible, setIsModalVisible] = useState(false);
     const [isStatsModalVisible, setIsStatsModalVisible] = useState(false);
     const [isPrivacyModalVisible, setIsPrivacyModalVisible] = useState(false);
     const [animatedValue] = useState(new Animated.Value(0));
-    const [headerHeight, setHeaderHeight] = useState(0);
     const [profileImage, setProfileImage] = useState(user?.photoURL || null);
     const [isUploadingImage, setIsUploadingImage] = useState(false);
-    
+
     const { status: locStatus, requestPermission: requestLocPerm } = usePermissions('location');
     const { status: bgLocStatus, requestPermission: requestBgLocPerm } = usePermissions('backgroundLocation');
     const [pushEnabled, setPushEnabled] = useState(true);
     const [biometricEnabled, setBiometricEnabled] = useState(false);
     const [autoBackupEnabled, setAutoBackupEnabled] = useState(true);
-    
-    // Mock user stats
+
     const userStats = {
         totalTrips: 127,
         totalDistance: '2,458 km',
@@ -68,7 +64,7 @@ const ProfileScreen = () => {
             duration: 800,
             useNativeDriver: true,
         }).start();
-    }, []);
+    }, [animatedValue]);
 
     const handleLogout = async () => {
         Alert.alert(
@@ -137,7 +133,7 @@ const ProfileScreen = () => {
                     cancelButtonIndex: 3,
                 },
                 (buttonIndex) => {
-                    if (buttonIndex < 3) {
+                    if (buttonIndex < 3 && options[buttonIndex]) {
                         options[buttonIndex].onPress?.();
                     }
                 }
@@ -146,7 +142,7 @@ const ProfileScreen = () => {
             Alert.alert(
                 "Profile Picture",
                 "Choose an option",
-                options
+                options.map(opt => ({ text: opt.text, onPress: opt.onPress, style: opt.style }))
             );
         }
     };
@@ -154,44 +150,28 @@ const ProfileScreen = () => {
     const pickImage = async (source: 'camera' | 'library') => {
         try {
             setIsUploadingImage(true);
-            
-            // Request permissions
-            const { status } = source === 'camera' 
+            const permissionResult = source === 'camera'
                 ? await ImagePicker.requestCameraPermissionsAsync()
                 : await ImagePicker.requestMediaLibraryPermissionsAsync();
-            
-            if (status !== 'granted') {
-                Alert.alert(
-                    'Permission needed',
-                    `We need ${source} permissions to update your profile picture.`
-                );
+
+            if (permissionResult.status !== 'granted') {
+                Alert.alert('Permission needed', `We need ${source} permissions to update your profile picture.`);
+                setIsUploadingImage(false);
                 return;
             }
 
-            // Launch image picker
-            const result = await ImagePicker.launchImageLibraryAsync({
-                mediaTypes: ImagePicker.MediaTypeOptions.Images,
-                allowsEditing: true,
-                aspect: [1, 1],
-                quality: 0.8,
-            });
+            const result = source === 'camera'
+                ? await ImagePicker.launchCameraAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [1, 1], quality: 0.8 })
+                : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [1, 1], quality: 0.8 });
 
-            if (!result.canceled && result.assets[0]) {
+            if (!result.canceled && result.assets && result.assets[0]) {
                 const imageUri = result.assets[0].uri;
-                
-                // Resize and compress image
                 const manipulatedImage = await ImageManipulator.manipulateAsync(
                     imageUri,
                     [{ resize: { width: 400, height: 400 } }],
                     { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
                 );
-
-                // Update profile image
                 setProfileImage(manipulatedImage.uri);
-                
-                // Here you would typically upload to your backend
-                // await uploadProfileImage(manipulatedImage.uri);
-                
                 Alert.alert('Success', 'Profile picture updated successfully!');
             }
         } catch (error) {
@@ -203,18 +183,12 @@ const ProfileScreen = () => {
     };
 
     const removeProfileImage = () => {
-        Alert.alert(
-            'Remove Profile Picture',
-            'Are you sure you want to remove your profile picture?',
+        Alert.alert('Remove Profile Picture', 'Are you sure you want to remove your profile picture?',
             [
                 { text: 'Cancel', style: 'cancel' },
                 {
-                    text: 'Remove',
-                    style: 'destructive',
-                    onPress: () => {
+                    text: 'Remove', style: 'destructive', onPress: () => {
                         setProfileImage(null);
-                        // Here you would typically update your backend
-                        // await removeProfileImageFromServer();
                         Alert.alert('Success', 'Profile picture removed successfully!');
                     }
                 }
@@ -222,62 +196,45 @@ const ProfileScreen = () => {
         );
     };
 
-    // --- Permission Handlers ---
     const handleRequestLocation = async () => {
-        const newStatus = await requestLocPerm();
-        Alert.alert("Location Permission", `Status: ${newStatus}`);
+        const newStatus = await requestLocPerm(); Alert.alert("Location Permission", `Status: ${newStatus}`);
     };
-
     const handleRequestBgLocation = async () => {
-        const newStatus = await requestBgLocPerm();
-        Alert.alert("Background Location", `Status: ${newStatus}`);
+        const newStatus = await requestBgLocPerm(); Alert.alert("Background Location", `Status: ${newStatus}`);
     };
 
-    // --- Dynamic Styles with Fixed Colors ---
     const dynamicStyles = StyleSheet.create({
         container: { backgroundColor: colors.background },
         name: { color: colors.text },
-        email: { 
-            color: isDarkMode ? colors.text + '90' : colors.text + '70'
-        },
-        sectionHeader: { 
-            color: colors.text, 
-            fontWeight: '600' 
-        },
-        settingRow: { 
+        email: { color: isDarkMode ? colors.text + '90' : colors.text + '70' },
+        sectionHeader: { color: colors.text, fontWeight: '600' },
+        settingRow: {
             borderBottomColor: isDarkMode ? colors.border + '30' : colors.border + '20',
-            backgroundColor: isDarkMode ? colors.card + '20' : colors.card
+            backgroundColor: colors.card 
         },
         settingText: { color: colors.text },
-        settingValue: { 
-            color: isDarkMode ? colors.text + '80' : colors.text + '60'
-        },
+        settingValue: { color: isDarkMode ? colors.text + '80' : colors.text + '60' },
         modalText: { color: colors.text },
-        arrow: { 
-            color: isDarkMode ? colors.text + '60' : colors.text + '50'
-        },
+        arrow: { color: isDarkMode ? colors.text + '60' : colors.text + '50' },
         safeArea: { backgroundColor: colors.background },
-        statCard: { 
-            backgroundColor: isDarkMode ? colors.card + '30' : '#FFFFFF',
-            borderColor: isDarkMode ? colors.primary + '20' : colors.primary + '15',
-            shadowColor: isDarkMode ? colors.primary : '#000000'
+        statCard: {
+            backgroundColor: isDarkMode ? colors.card : '#FFFFFF', 
+            borderColor: isDarkMode ? (colors.border || '#555555') + '70' : colors.primary + '15',
+            shadowColor: '#000000'
         },
-        settingSubtitle: {
-            color: isDarkMode ? colors.text + '60' : colors.text + '50'
-        }
+        settingSubtitle: { color: isDarkMode ? colors.text + '60' : colors.text + '50' }
     });
 
-    // --- Render Helpers ---
     const renderThemeOption = (mode: ThemeMode, label: string, icon: string) => (
         <TouchableOpacity
             style={[
                 styles.themeOptionButton,
                 {
-                    backgroundColor: themeMode === mode 
-                        ? colors.primary 
-                        : isDarkMode ? colors.card + '30' : '#FFFFFF',
-                    borderColor: themeMode === mode 
-                        ? colors.primary 
+                    backgroundColor: themeMode === mode
+                        ? colors.primary
+                        : isDarkMode ? colors.card : '#FFFFFF', 
+                    borderColor: themeMode === mode
+                        ? colors.primary
                         : isDarkMode ? colors.border + '30' : colors.border + '20',
                     shadowColor: themeMode === mode ? colors.primary : (isDarkMode ? colors.text : '#000000'),
                 },
@@ -285,69 +242,29 @@ const ProfileScreen = () => {
             onPress={() => setThemeMode(mode)}
             activeOpacity={0.8}
         >
-            <Ionicons 
-                name={icon as any} 
-                size={20} 
-                color={themeMode === mode 
-                    ? '#FFFFFF' 
-                    : isDarkMode ? colors.text : colors.text + 'CC'
-                } 
-            />
-            <Text
-                style={[
-                    styles.themeOptionText,
-                    { 
-                        color: themeMode === mode 
-                            ? '#FFFFFF' 
-                            : isDarkMode ? colors.text : colors.text + 'CC'
-                    },
-                ]}
-            >
+            <Ionicons name={icon as any} size={20} color={themeMode === mode ? '#FFFFFF' : isDarkMode ? colors.text : colors.text + 'CC'} />
+            <Text style={[styles.themeOptionText, { color: themeMode === mode ? '#FFFFFF' : isDarkMode ? colors.text : colors.text + 'CC' }]}>
                 {label}
             </Text>
         </TouchableOpacity>
     );
 
-    const renderSettingRow = (
-        icon: string, 
-        label: string, 
-        value?: string, 
-        onPress?: () => void,
-        rightElement?: React.ReactNode,
-        subtitle?: string
-    ) => (
-        <TouchableOpacity 
-            style={[styles.enhancedSettingRow, dynamicStyles.settingRow]} 
-            onPress={onPress}
-            activeOpacity={0.7}
-        >
+    const renderSettingRow = (icon: string, label: string, value?: string, onPress?: () => void, rightElement?: React.ReactNode, subtitle?: string) => (
+        <TouchableOpacity style={[styles.enhancedSettingRow, dynamicStyles.settingRow]} onPress={onPress} activeOpacity={0.7}>
             <View style={styles.settingLeft}>
-                <View style={[
-                    styles.iconContainer, 
-                    { backgroundColor: colors.primary + (isDarkMode ? '25' : '15') }
-                ]}>
+                <View style={[styles.iconContainer, { backgroundColor: colors.primary + (isDarkMode ? '25' : '15') }]}>
                     <Ionicons name={icon as any} size={20} color={colors.primary} />
                 </View>
                 <View style={styles.settingInfo}>
                     <Text style={[styles.settingText, dynamicStyles.settingText]}>{label}</Text>
-                    {subtitle && (
-                        <Text style={[styles.settingSubtitle, dynamicStyles.settingSubtitle]}>
-                            {subtitle}
-                        </Text>
-                    )}
+                    {subtitle && (<Text style={[styles.settingSubtitle, dynamicStyles.settingSubtitle]}>{subtitle}</Text>)}
                 </View>
             </View>
             <View style={styles.settingRight}>
                 {rightElement || (
                     <>
-                        {value && (
-                            <Text style={[styles.settingValue, dynamicStyles.settingValue]}>
-                                {value}
-                            </Text>
-                        )}
-                        {onPress && (
-                            <Ionicons name="chevron-forward" size={18} color={dynamicStyles.arrow.color} />
-                        )}
+                        {value && (<Text style={[styles.settingValue, dynamicStyles.settingValue]}>{value}</Text>)}
+                        {onPress && (<Ionicons name="chevron-forward" size={18} color={dynamicStyles.arrow.color} />)}
                     </>
                 )}
             </View>
@@ -360,116 +277,45 @@ const ProfileScreen = () => {
                 <Ionicons name={icon as any} size={24} color={color} />
             </View>
             <Text style={[styles.statValue, { color: colors.text }]}>{value}</Text>
-            <Text style={[styles.statTitle, { 
-                color: isDarkMode ? colors.text + '70' : colors.text + '60'
-            }]}>{title}</Text>
+            <Text style={[styles.statTitle, { color: isDarkMode ? colors.text + '70' : colors.text + '60' }]}>{title}</Text>
         </View>
     );
 
     if (authIsLoading && !user) {
-        return (
-            <View style={[styles.centered, dynamicStyles.container]}>
-                <Text style={dynamicStyles.name}>Loading profile...</Text>
-            </View>
-        );
+        return (<View style={[styles.centered, dynamicStyles.container]}><Text style={dynamicStyles.name}>Loading profile...</Text></View>);
     }
 
     return (
         <SafeAreaView style={[styles.safeArea, dynamicStyles.safeArea]}>
-            <ScrollView 
-                style={[styles.scrollContainer, dynamicStyles.container]}
-                showsVerticalScrollIndicator={false}
-            >
-                {/* Enhanced Profile Header */}
-                <Animated.View 
-                    style={[
-                        styles.profileHeader,
-                        {
-                            opacity: animatedValue,
-                            transform: [{
-                                translateY: animatedValue.interpolate({
-                                    inputRange: [0, 1],
-                                    outputRange: [50, 0]
-                                })
-                            }]
-                        }
-                    ]}
-                >
-                    <LinearGradient
-                        colors={isDarkMode 
-                            ? [colors.primary + '20', colors.primary + '05'] 
-                            : [colors.primary + '10', colors.primary + '03']
-                        }
-                        style={styles.headerGradient}
-                    >
-                        <TouchableOpacity 
-                            style={styles.profileAvatarContainer}
-                            onPress={handleImagePicker}
-                            activeOpacity={0.8}
-                        >
+            <ScrollView style={[styles.scrollContainer, dynamicStyles.container]} showsVerticalScrollIndicator={false}>
+                <Animated.View style={[styles.profileHeader, { opacity: animatedValue, transform: [{ translateY: animatedValue.interpolate({ inputRange: [0, 1], outputRange: [50, 0] }) }] }]}>
+                    <LinearGradient colors={isDarkMode ? [colors.primary + '20', colors.primary + '05'] : [colors.primary + '10', colors.primary + '03']} style={styles.headerGradient}>
+                        <TouchableOpacity style={styles.profileAvatarContainer} onPress={handleImagePicker} activeOpacity={0.8}>
                             <Avatar
                                 source={profileImage ? { uri: profileImage } : undefined}
                                 size={120}
-                                style={{ 
-                                    borderColor: colors.primary,
-                                    borderWidth: 4,
-                                    shadowColor: colors.primary,
-                                    shadowOffset: { width: 0, height: 8 },
-                                    shadowOpacity: isDarkMode ? 0.4 : 0.2,
-                                    shadowRadius: 16,
-                                }}
+                                style={{ borderColor: colors.primary, borderWidth: 4, shadowColor: colors.primary, shadowOffset: { width: 0, height: 8 }, shadowOpacity: isDarkMode ? 0.4 : 0.2, shadowRadius: 16 }}
                             />
                             <View style={[styles.cameraIcon, { backgroundColor: colors.primary }]}>
-                                {isUploadingImage ? (
-                                    <Ionicons name="hourglass-outline" size={16} color="white" />
-                                ) : (
-                                    <Ionicons name="camera" size={16} color="white" />
-                                )}
+                                {isUploadingImage ? (<Ionicons name="hourglass-outline" size={16} color="white" />) : (<Ionicons name="camera" size={16} color="white" />)}
                             </View>
                         </TouchableOpacity>
-                        
-                        <Text style={[styles.name, dynamicStyles.name]}>
-                            {user?.displayName || 'Pasada User'}
-                        </Text>
-                        <Text style={[styles.email, dynamicStyles.email]}>
-                            {user?.email || 'No email'}
-                        </Text>
-                        
+                        <Text style={[styles.name, dynamicStyles.name]}>{user?.displayName || 'Pasada User'}</Text>
+                        <Text style={[styles.email, dynamicStyles.email]}>{user?.email || 'No email'}</Text>
                         <View style={styles.headerActions}>
-                            <Button
-                                title="Edit Profile"
-                                onPress={() => router.push('/(tabs)/profile/edit')}
-                                variant="primary"
-                                style={styles.editButton}
-                            />
-                            <TouchableOpacity 
-                                style={[
-                                    styles.shareButton, 
-                                    { 
-                                        borderColor: colors.primary,
-                                        backgroundColor: isDarkMode ? 'transparent' : '#FFFFFF'
-                                    }
-                                ]}
-                                onPress={handleShareProfile}
-                            >
+                            <Button title="Edit Profile" onPress={() => router.push('/(tabs)/profile/edit')} variant="primary" style={styles.editButton} />
+                            <TouchableOpacity style={[styles.shareButton, { borderColor: colors.primary, backgroundColor: isDarkMode ? 'transparent' : '#FFFFFF' }]} onPress={handleShareProfile}>
                                 <Ionicons name="share-outline" size={20} color={colors.primary} />
                             </TouchableOpacity>
                         </View>
                     </LinearGradient>
                 </Animated.View>
 
-                {/* Stats Section */}
                 <View style={styles.statsSection}>
-                    <TouchableOpacity 
-                        style={styles.sectionHeaderRow}
-                        onPress={() => setIsStatsModalVisible(true)}
-                    >
-                        <Text style={[styles.sectionHeader, dynamicStyles.sectionHeader]}>
-                            Your Stats
-                        </Text>
+                    <TouchableOpacity style={styles.sectionHeaderRow} onPress={() => setIsStatsModalVisible(true)}>
+                        <Text style={[styles.sectionHeader, dynamicStyles.sectionHeader]}>Your Stats</Text>
                         <Ionicons name="analytics-outline" size={20} color={colors.primary} />
                     </TouchableOpacity>
-                    
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.statsContainer}>
                         {renderStatCard('Total Trips', userStats.totalTrips.toString(), 'car-outline', colors.primary)}
                         {renderStatCard('Distance', userStats.totalDistance, 'speedometer-outline', '#FF6B6B')}
@@ -479,9 +325,7 @@ const ProfileScreen = () => {
                     </ScrollView>
                 </View>
 
-                {/* Settings Sections */}
                 <View style={styles.settingsSection}>
-                    {/* Appearance */}
                     <Text style={[styles.sectionHeader, dynamicStyles.sectionHeader]}>Appearance</Text>
                     <View style={styles.themeOptionsContainer}>
                         {renderThemeOption('light', 'Light', 'sunny-outline')}
@@ -489,176 +333,58 @@ const ProfileScreen = () => {
                         {renderThemeOption('system', 'Auto', 'phone-portrait-outline')}
                     </View>
 
-                    {/* Privacy & Security */}
                     <Text style={[styles.sectionHeader, dynamicStyles.sectionHeader]}>Privacy & Security</Text>
-                    {renderSettingRow(
-                        'location-outline', 
-                        'Location Access', 
-                        locStatus || 'Check...', 
-                        handleRequestLocation,
-                        undefined,
-                        'Required for trip tracking'
-                    )}
-                    {renderSettingRow(
-                        'navigate-outline', 
-                        'Background Location', 
-                        bgLocStatus || 'Check...', 
-                        handleRequestBgLocation,
-                        undefined,
-                        'For continuous tracking'
-                    )}
-                    {renderSettingRow(
-                        'finger-print-outline', 
-                        'Biometric Authentication', 
-                        undefined, 
-                        undefined,
-                        <Switch
-                            value={biometricEnabled}
-                            onValueChange={setBiometricEnabled}
-                            trackColor={{ 
-                                false: isDarkMode ? "#767577" : "#D3D3D3", 
-                                true: colors.primary 
-                            }}
-                            thumbColor={isDarkMode ? colors.card : "#FFFFFF"}
-                        />,
+                    {renderSettingRow('location-outline', 'Location Access', locStatus || 'Check...', handleRequestLocation, undefined, 'Required for trip tracking')}
+                    {renderSettingRow('navigate-outline', 'Background Location', bgLocStatus || 'Check...', handleRequestBgLocation, undefined, 'For continuous tracking')}
+                    {renderSettingRow('finger-print-outline', 'Biometric Authentication', undefined, undefined,
+                        <Switch value={biometricEnabled} onValueChange={setBiometricEnabled} trackColor={{ false: isDarkMode ? "#767577" : "#D3D3D3", true: colors.primary }} thumbColor={isDarkMode ? '#E0E0E0' : '#FFFFFF'} />, // MODIFIED thumbColor
                         'Secure app access'
                     )}
-                    {renderSettingRow(
-                        'shield-checkmark-outline', 
-                        'Privacy Settings', 
-                        undefined, 
-                        () => setIsPrivacyModalVisible(true)
-                    )}
+                    {renderSettingRow('shield-checkmark-outline', 'Privacy Settings', undefined, () => setIsPrivacyModalVisible(true))}
 
-                    {/* Notifications */}
                     <Text style={[styles.sectionHeader, dynamicStyles.sectionHeader]}>Notifications</Text>
-                    {renderSettingRow(
-                        'notifications-outline', 
-                        'Push Notifications', 
-                        undefined, 
-                        undefined,
-                        <Switch
-                            value={pushEnabled}
-                            onValueChange={setPushEnabled}
-                            trackColor={{ 
-                                false: isDarkMode ? "#767577" : "#D3D3D3", 
-                                true: colors.primary 
-                            }}
-                            thumbColor={isDarkMode ? colors.card : "#FFFFFF"}
-                        />,
+                    {renderSettingRow('notifications-outline', 'Push Notifications', undefined, undefined,
+                        <Switch value={pushEnabled} onValueChange={setPushEnabled} trackColor={{ false: isDarkMode ? "#767577" : "#D3D3D3", true: colors.primary }} thumbColor={isDarkMode ? '#E0E0E0' : '#FFFFFF'} />, // MODIFIED thumbColor
                         'Trip alerts and updates'
                     )}
 
-                    {/* Data & Storage */}
                     <Text style={[styles.sectionHeader, dynamicStyles.sectionHeader]}>Data & Storage</Text>
-                    {renderSettingRow(
-                        'cloud-upload-outline', 
-                        'Auto Backup', 
-                        undefined, 
-                        undefined,
-                        <Switch
-                            value={autoBackupEnabled}
-                            onValueChange={setAutoBackupEnabled}
-                            trackColor={{ 
-                                false: isDarkMode ? "#767577" : "#D3D3D3", 
-                                true: colors.primary 
-                            }}
-                            thumbColor={isDarkMode ? colors.card : "#FFFFFF"}
-                        />,
+                    {renderSettingRow('cloud-upload-outline', 'Auto Backup', undefined, undefined,
+                        <Switch value={autoBackupEnabled} onValueChange={setAutoBackupEnabled} trackColor={{ false: isDarkMode ? "#767577" : "#D3D3D3", true: colors.primary }} thumbColor={isDarkMode ? '#E0E0E0' : '#FFFFFF'} />, // MODIFIED thumbColor
                         'Automatic data backup'
                     )}
                     {renderSettingRow('download-outline', 'Export Data', undefined, handleDataExport)}
-                    {renderSettingRow('trash-outline', 'Clear Cache', '1.2 MB', () => {
-                        Alert.alert('Cache Cleared', 'App cache has been cleared successfully.');
-                    })}
+                    {renderSettingRow('trash-outline', 'Clear Cache', '1.2 MB', () => { Alert.alert('Cache Cleared', 'App cache has been cleared successfully.'); })}
 
-                    {/* Support */}
                     <Text style={[styles.sectionHeader, dynamicStyles.sectionHeader]}>Support</Text>
-                    {renderSettingRow('help-circle-outline', 'Help Center', undefined, () => {
-                        Linking.openURL('https://pasada.com/help');
-                    })}
+                    {renderSettingRow('help-circle-outline', 'Help Center', undefined, () => { Linking.openURL('https://pasada.com/help'); })}
                     {renderSettingRow('mail-outline', 'Contact Support', undefined, handleContactSupport)}
-                    {renderSettingRow('star-outline', 'Rate App', undefined, () => {
-                        Linking.openURL('https://apps.apple.com/app/pasada');
-                    })}
+                    {renderSettingRow('star-outline', 'Rate App', undefined, () => { Linking.openURL(Platform.OS === 'ios' ? 'itms-apps://itunes.apple.com/app/YOUR_APP_ID' : 'market://details?id=YOUR_PACKAGE_NAME'); })}
                     {renderSettingRow('information-circle-outline', 'About', 'v1.0.0', () => setIsModalVisible(true))}
                 </View>
 
-                {/* Action Buttons */}
                 <View style={styles.actionsSection}>
-                    <Button
-                        title={authIsLoading ? "Logging out..." : "Logout"}
-                        onPress={handleLogout}
-                        variant="danger"
-                        disabled={authIsLoading}
-                    />
+                    <Button title={authIsLoading ? "Logging out..." : "Logout"} onPress={handleLogout} variant="danger" disabled={authIsLoading} />
                 </View>
 
-                {/* Modals */}
-                <Modal
-                    visible={isModalVisible}
-                    onClose={() => setIsModalVisible(false)}
-                    title="About Pasada"
-                >
+                <Modal visible={isModalVisible} onClose={() => setIsModalVisible(false)} title="About Pasada">
                     <Text style={[styles.modalText, dynamicStyles.modalText]}>Version 1.0.0</Text>
-                    <Text style={[styles.modalText, dynamicStyles.modalText]}>
-                        Built with React Native & Expo.
-                    </Text>
-                    <Text style={[styles.modalText, dynamicStyles.modalText]}>
-                        Your comprehensive travel tracking solution.
-                    </Text>
-                    <Button 
-                        title="Close" 
-                        onPress={() => setIsModalVisible(false)} 
-                        style={{ marginTop: 20 }} 
-                    />
+                    <Text style={[styles.modalText, dynamicStyles.modalText]}>Built with React Native & Expo.</Text>
+                    <Text style={[styles.modalText, dynamicStyles.modalText]}>Your comprehensive travel tracking solution.</Text>
+                    <Button title="Close" onPress={() => setIsModalVisible(false)} style={{ marginTop: 20 }} />
                 </Modal>
-
-                <Modal
-                    visible={isStatsModalVisible}
-                    onClose={() => setIsStatsModalVisible(false)}
-                    title="Detailed Statistics"
-                >
-                    <Text style={[styles.modalText, dynamicStyles.modalText]}>
-                        🚗 Total Trips: {userStats.totalTrips}
-                    </Text>
-                    <Text style={[styles.modalText, dynamicStyles.modalText]}>
-                        📏 Total Distance: {userStats.totalDistance}
-                    </Text>
-                    <Text style={[styles.modalText, dynamicStyles.modalText]}>
-                        ⚡ Average Speed: {userStats.avgSpeed}
-                    </Text>
-                    <Text style={[styles.modalText, dynamicStyles.modalText]}>
-                        ⛽ Fuel Saved: {userStats.fuelSaved}
-                    </Text>
-                    <Text style={[styles.modalText, dynamicStyles.modalText]}>
-                        🌱 CO₂ Reduced: {userStats.co2Saved}
-                    </Text>
-                    <Button 
-                        title="Close" 
-                        onPress={() => setIsStatsModalVisible(false)} 
-                        style={{ marginTop: 20 }} 
-                    />
+                <Modal visible={isStatsModalVisible} onClose={() => setIsStatsModalVisible(false)} title="Detailed Statistics">
+                    <Text style={[styles.modalText, dynamicStyles.modalText]}>🚗 Total Trips: {userStats.totalTrips}</Text>
+                    <Text style={[styles.modalText, dynamicStyles.modalText]}>📏 Total Distance: {userStats.totalDistance}</Text>
+                    <Text style={[styles.modalText, dynamicStyles.modalText]}>⚡ Average Speed: {userStats.avgSpeed}</Text>
+                    <Text style={[styles.modalText, dynamicStyles.modalText]}>⛽ Fuel Saved: {userStats.fuelSaved}</Text>
+                    <Text style={[styles.modalText, dynamicStyles.modalText]}>🌱 CO₂ Reduced: {userStats.co2Saved}</Text>
+                    <Button title="Close" onPress={() => setIsStatsModalVisible(false)} style={{ marginTop: 20 }} />
                 </Modal>
-
-                <Modal
-                    visible={isPrivacyModalVisible}
-                    onClose={() => setIsPrivacyModalVisible(false)}
-                    title="Privacy Settings"
-                >
-                    <Text style={[styles.modalText, dynamicStyles.modalText]}>
-                        Your privacy is important to us. Here you can control how your data is used and shared.
-                    </Text>
-                    <Button 
-                        title="View Privacy Policy" 
-                        onPress={() => Linking.openURL('https://cartrackpro.com/privacy')}
-                        style={{ marginTop: 15 }} 
-                    />
-                    <Button 
-                        title="Close" 
-                        onPress={() => setIsPrivacyModalVisible(false)} 
-                        style={{ marginTop: 10 }} 
-                    />
+                <Modal visible={isPrivacyModalVisible} onClose={() => setIsPrivacyModalVisible(false)} title="Privacy Settings">
+                    <Text style={[styles.modalText, dynamicStyles.modalText]}>Your privacy is important to us. Here you can control how your data is used and shared.</Text>
+                    <Button title="View Privacy Policy" onPress={() => Linking.openURL('https://cartrackpro.com/privacy')} style={{ marginTop: 15 }} />
+                    <Button title="Close" onPress={() => setIsPrivacyModalVisible(false)} style={{ marginTop: 10 }} />
                 </Modal>
             </ScrollView>
         </SafeAreaView>
@@ -666,21 +392,29 @@ const ProfileScreen = () => {
 };
 
 const styles = StyleSheet.create({
-    safeArea: { flex: 1 },
-    scrollContainer: { flex: 1 },
-    centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    
-    // Enhanced Profile Header
-    profileHeader: { marginBottom: 20 },
-    headerGradient: { 
-        paddingTop: 40, 
-        paddingHorizontal: 30, 
-        paddingBottom: 30,
-        alignItems: 'center'
+    safeArea: {
+        flex: 1,
     },
-    profileAvatarContainer: { 
+    scrollContainer: {
+        flex: 1,
+    },
+    centered: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    profileHeader: {
         marginBottom: 20,
-        position: 'relative'
+    },
+    headerGradient: {
+        paddingTop: 40,
+        paddingHorizontal: 30,
+        paddingBottom: 30,
+        alignItems: 'center',
+    },
+    profileAvatarContainer: {
+        marginBottom: 20,
+        position: 'relative',
     },
     cameraIcon: {
         position: 'absolute',
@@ -698,14 +432,14 @@ const styles = StyleSheet.create({
         borderWidth: 3,
         borderColor: 'white',
     },
-    name: { 
-        fontSize: 28, 
-        fontWeight: 'bold', 
+    name: {
+        fontSize: 28,
+        fontWeight: 'bold',
         marginBottom: 5,
     },
-    email: { 
-        fontSize: 16, 
-        marginBottom: 20 
+    email: {
+        fontSize: 16,
+        marginBottom: 20,
     },
     headerActions: {
         flexDirection: 'row',
@@ -720,8 +454,6 @@ const styles = StyleSheet.create({
         borderRadius: 25,
         borderWidth: 1.5,
     },
-
-    // Stats Section
     statsSection: {
         paddingHorizontal: 20,
         marginBottom: 25,
@@ -764,20 +496,16 @@ const styles = StyleSheet.create({
         fontSize: 12,
         textAlign: 'center',
     },
-
-    // Settings Section
-    settingsSection: { 
-        paddingHorizontal: 20, 
-        marginBottom: 20 
+    settingsSection: {
+        paddingHorizontal: 20,
+        marginBottom: 20,
     },
-    sectionHeader: { 
-        fontSize: 18, 
-        fontWeight: '600', 
-        marginBottom: 12, 
-        marginTop: 25 
+    sectionHeader: {
+        fontSize: 18,
+        fontWeight: '600',
+        marginBottom: 12,
+        marginTop: 25,
     },
-
-    // Theme Options
     themeOptionsContainer: {
         flexDirection: 'row',
         justifyContent: 'space-between',
@@ -804,8 +532,6 @@ const styles = StyleSheet.create({
         fontWeight: '500',
         marginLeft: 8,
     },
-
-    // Enhanced Setting Rows
     enhancedSettingRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
@@ -835,7 +561,7 @@ const styles = StyleSheet.create({
     settingInfo: {
         flex: 1,
     },
-    settingText: { 
+    settingText: {
         fontSize: 16,
         fontWeight: '500',
     },
@@ -847,24 +573,20 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
     },
-    settingValue: { 
-        fontSize: 14, 
+    settingValue: {
+        fontSize: 14,
         marginRight: 8,
     },
-
-    // Actions Section
-    actionsSection: { 
-        paddingHorizontal: 20, 
-        paddingBottom: 40, 
-        marginTop: 20 
+    actionsSection: {
+        paddingHorizontal: 20,
+        paddingBottom: 40,
+        marginTop: 20,
     },
-
-    // Modal
-    modalText: { 
-        fontSize: 16, 
-        lineHeight: 24, 
-        textAlign: 'center', 
-        marginBottom: 8 
+    modalText: {
+        fontSize: 16,
+        lineHeight: 24,
+        textAlign: 'center',
+        marginBottom: 8,
     },
 });
 
