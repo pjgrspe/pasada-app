@@ -1,5 +1,5 @@
 // pasada-gemini/modules/map/services/tripPlannerServices.ts
-// Increased JEEP_TERMINAL_NO_BOARD_VERTEX_COUNT and added logging for terminal logic.
+// Added extensive logging for debugging multi-route processing.
 
 import {
   Coordinate,
@@ -18,17 +18,14 @@ import {
 } from './mapApiServices';
 import { calculateDistanceOfPolyline } from '../utils/mapHelpers';
 
-// --- Constants for Trip Planning Logic (tuned for performance) ---
 const MAX_WALK_TO_JEEP_METERS = 700;
 const MAX_FINAL_WALK_METERS = 1500;
 const ALIGNMENT_PROXIMITY_THRESHOLD_METERS = 200;
 const MIN_JEEP_RIDE_PROGRESS_METERS = 200;
 const DESIRED_PATH_SEARCH_AHEAD_METERS = 600;
 const DIVERGENCE_THRESHOLD_METERS = 250;
-// Increased threshold for terminal zone detection
-const JEEP_TERMINAL_NO_BOARD_VERTEX_COUNT = 25; // If boarding index is less than this, redirect to route start (index 0)
+const JEEP_TERMINAL_NO_BOARD_VERTEX_COUNT = 25;
 
-// --- Constants for Post-Processing Refinement Optimization ---
 const REFINE_SEARCH_RADIUS_METERS = 120;
 const REFINE_MIN_WALK_SAVING_METERS = 50;
 const REFINE_MAX_WALK_FOR_CONNECTION = 400;
@@ -37,6 +34,7 @@ const REFINE_EARLY_EXIT_WALK_THRESHOLD = 15;
 const ALIGHTING_POINT_SEARCH_TOLERANCE_METERS = 50;
 const OVERLAP_CUT_THRESHOLD_METERS = 30;
 const OVERLAP_WALK_POINTS_TO_CHECK_V7 = 4;
+const MAX_TRIP_OPTIONS_TO_RETURN = 3;
 
 interface AlignedJeepInfo {
   jeepRoute: JeepneyRoute;
@@ -56,6 +54,7 @@ function findBestAlignedJeepney(
     maxWalkToBoard: number,
     finalDestination: Coordinate
 ): AlignedJeepInfo | null {
+    // console.log(`[findBestAlignedJeepney] Called. currentDesiredPathIndex: ${currentDesiredPathIndex}`);
     let bestOption: AlignedJeepInfo | null = null;
     let bestOptionScore = -Infinity;
 
@@ -92,17 +91,11 @@ function findBestAlignedJeepney(
             let rideStartsFromVertexIndex = candidateBoardingVertexIndex;
             let walkToThisBoardingPointDist = calculateDistance(actualCurrentLocation, actualBoardingCoordinateForRide);
 
-            // DEBUG LOG for terminal logic
-            // console.log(`[Jeep: ${segInfo.originalRoute.name}] Initial candidateBoardingVertexIndex: ${candidateBoardingVertexIndex}`);
-
             if (candidateBoardingVertexIndex < JEEP_TERMINAL_NO_BOARD_VERTEX_COUNT && segInfo.originalRoute.coordinates.length > 0) {
-                // console.log(`  -> Candidate is in terminal zone ( < ${JEEP_TERMINAL_NO_BOARD_VERTEX_COUNT}). Forcing board at index 0.`);
                 actualBoardingCoordinateForRide = segInfo.originalRoute.coordinates[0];
                 rideStartsFromVertexIndex = 0;
                 walkToThisBoardingPointDist = calculateDistance(actualCurrentLocation, actualBoardingCoordinateForRide);
             }
-            // console.log(`  -> Final rideStartsFromVertexIndex: ${rideStartsFromVertexIndex}, walkDist: ${walkToThisBoardingPointDist.toFixed(0)}m`);
-
 
             if (walkToThisBoardingPointDist > maxWalkToBoard) continue;
 
@@ -175,16 +168,17 @@ function findBestAlignedJeepney(
             }
         }
     }
+    // if (bestOption) console.log(`[findBestAlignedJeepney] Found best option: ${bestOption.jeepRoute.name}`);
+    // else console.log(`[findBestAlignedJeepney] No suitable jeep found for this path segment.`);
     return bestOption;
 }
 
-// ... (refineTripLegs, getCoordinatesInSearchWindow, trimJeepLeg remain the same as the previous good version)
 async function refineTripLegs(
     legs: PlannedTripLeg[],
     finalDestination: Coordinate
 ): Promise<PlannedTripLeg[]> {
     if (legs.length === 0) return legs;
-    const refinedLegs: PlannedTripLeg[] = JSON.parse(JSON.stringify(legs));
+    const refinedLegs: PlannedTripLeg[] = JSON.parse(JSON.stringify(legs)); // Deep copy
 
     for (let i = 0; i < refinedLegs.length; i++) {
         const currentLeg = refinedLegs[i];
@@ -350,7 +344,6 @@ async function refineTripLegs(
     return refinedLegs.filter(leg => leg.coordinates && leg.coordinates.length > 0 && ( (leg.type === 'walk' && leg.distance && typeof leg.distance === 'number' && leg.distance > 1) || leg.type === 'jeepney'));
 }
 
-
 function getCoordinatesInSearchWindow(
     routeCoordinates: Coordinate[],
     centerVertexIndexInput: number,
@@ -477,24 +470,18 @@ function trimJeepLeg(
     return trimmedCoordinates.filter(c => c) as Coordinate[];
 }
 
-
-export async function planTripWithDrivingGuide(
+async function _planSingleTripWithGuide(
   origin: Coordinate,
-  destination: Coordinate
-): Promise<Array<PlannedTripLeg[]>> {
-  const drivingPathLeg = await getDrivingDirections(origin, destination);
-  if (!drivingPathLeg || !drivingPathLeg.coordinates || drivingPathLeg.coordinates.length === 0) {
-    const directWalk = await getWalkingDirections(origin, destination);
-    return directWalk ? [[directWalk]] : [];
-  }
-  const desiredPathPolyline: Coordinate[] = drivingPathLeg.coordinates;
-
+  destination: Coordinate,
+  desiredPathPolyline: Coordinate[]
+): Promise<PlannedTripLeg[]> {
+  // console.log(`[_planSingleTripWithGuide] Planning with desired path length: ${desiredPathPolyline.length}`);
   let plannedLegs: PlannedTripLeg[] = [];
   let currentLocation = origin;
   let currentDesiredPathIndex = 0;
   let lastJeepRouteIdTaken: string | undefined = undefined;
   let consecutiveShortJeepLegsOnSameRoute = 0;
-  const MAX_TRIP_LEGS = 10;
+  const MAX_TRIP_LEGS = 10; // Max legs for one option
 
   for (let legCount = 0; legCount < MAX_TRIP_LEGS; legCount++) {
     const distanceToFinalDest = calculateDistance(currentLocation, destination);
@@ -519,6 +506,7 @@ export async function planTripWithDrivingGuide(
     );
 
     if (alignedJeepInfo) {
+        // console.log(`[_planSingleTripWithGuide] Leg ${legCount}: Found aligned jeep ${alignedJeepInfo.jeepRoute.name}`);
         if (alignedJeepInfo.jeepRoute.id === lastJeepRouteIdTaken &&
             calculateDistance(currentLocation, alignedJeepInfo.boardingPointOnJeep) < 120 &&
             calculateDistance(alignedJeepInfo.boardingPointOnJeep, alignedJeepInfo.alightPointOnJeep) < MIN_JEEP_RIDE_PROGRESS_METERS * 1.8) {
@@ -573,16 +561,19 @@ export async function planTripWithDrivingGuide(
             currentDesiredPathIndex = alignedJeepInfo.desiredPathEndIndex;
             lastJeepRouteIdTaken = alignedJeepInfo.jeepRoute.id;
           } else {
+            //  console.log(`[_planSingleTripWithGuide] Leg ${legCount}: Jeep ride too short after trim. Ending with walk.`);
              const finalWalk = await getWalkingDirections(currentLocation, destination);
              if (finalWalk && (finalWalk.distance as number > 5)) plannedLegs.push(finalWalk);
              currentLocation = destination; break;
           }
       } else {
+        // console.log(`[_planSingleTripWithGuide] Leg ${legCount}: Walk to board too long. Ending with walk.`);
         const finalWalk = await getWalkingDirections(currentLocation, destination);
         if (finalWalk && (finalWalk.distance as number > 5)) plannedLegs.push(finalWalk);
         currentLocation = destination; break;
       }
     } else {
+      // console.log(`[_planSingleTripWithGuide] Leg ${legCount}: No aligned jeep found. Attempting to progress or final walk.`);
       if (distanceToFinalDest > MAX_FINAL_WALK_METERS * 0.75) {
           const walkAlongDesiredPathDist = Math.min(MAX_WALK_TO_JEEP_METERS * 0.65, distanceToFinalDest * 0.4);
           let nextPointIndex = currentDesiredPathIndex;
@@ -626,8 +617,64 @@ export async function planTripWithDrivingGuide(
        if (directWalkFallback && (directWalkFallback.distance as number > 5)) { plannedLegs.push(directWalkFallback); }
   }
 
-  const refinedSolution = await refineTripLegs(plannedLegs, destination);
-  return refinedSolution.length > 0 ? [refinedSolution] : [];
+  return refineTripLegs(plannedLegs, destination);
 }
 
-export { planTripWithDrivingGuide as planTrip };
+export async function planTrip(
+  origin: Coordinate,
+  destination: Coordinate
+): Promise<Array<PlannedTripLeg[]>> {
+  console.log(`[PlanTrip Multi-Guide START] Origin: ${JSON.stringify(origin)}, Dest: ${JSON.stringify(destination)}`);
+
+  const drivingGuideAlternatives: PlannedTripLeg[] | null = await getDrivingDirections(origin, destination);
+
+  if (!drivingGuideAlternatives || drivingGuideAlternatives.length === 0) {
+    console.warn("[PlanTrip Multi-Guide] No driving direction guides found. Attempting direct walk.");
+    const directWalk = await getWalkingDirections(origin, destination);
+    return directWalk ? [[directWalk]] : [];
+  }
+  console.log(`[PlanTrip Multi-Guide] Received ${drivingGuideAlternatives.length} driving guide alternatives.`);
+
+  const allPlannedTripOptions: Array<PlannedTripLeg[]> = [];
+
+  for (let i = 0; i < drivingGuideAlternatives.length; i++) {
+    const drivingGuide = drivingGuideAlternatives[i];
+    if (!drivingGuide.coordinates || drivingGuide.coordinates.length === 0) {
+      console.log(`[PlanTrip Multi-Guide] Skipping driving guide option ${i + 1} due to missing coordinates.`);
+      continue;
+    }
+    console.log(`[PlanTrip Multi-Guide] Processing driving guide option ${i + 1} with ${drivingGuide.coordinates.length} polyline points.`);
+
+    const plannedTripForThisGuide = await _planSingleTripWithGuide(origin, destination, drivingGuide.coordinates);
+
+    if (plannedTripForThisGuide.length > 0) {
+        console.log(`[PlanTrip Multi-Guide] -> Successfully planned ${plannedTripForThisGuide.length} legs for guide ${i + 1}.`);
+        allPlannedTripOptions.push(plannedTripForThisGuide);
+    } else {
+        console.log(`[PlanTrip Multi-Guide] -> No jeepney trip could be planned for driving guide ${i + 1}.`);
+    }
+  }
+
+  if (allPlannedTripOptions.length === 0) {
+    console.warn("[PlanTrip Multi-Guide] No jeepney routes planned for any driving guide. Offering direct walk as the only option.");
+    const directWalk = await getWalkingDirections(origin, destination);
+    return directWalk ? [[directWalk]] : [];
+  }
+
+  console.log(`[PlanTrip Multi-Guide END] Found ${allPlannedTripOptions.length} potential trip options before sorting/slicing.`);
+
+  allPlannedTripOptions.sort((optionA, optionB) => {
+    const jeepLegsA = optionA.filter(leg => leg.type === 'jeepney').length;
+    const jeepLegsB = optionB.filter(leg => leg.type === 'jeepney').length;
+    if (jeepLegsA !== jeepLegsB) return jeepLegsA - jeepLegsB;
+
+    const durationA = optionA.reduce((sum, leg) => sum + (typeof leg.duration === 'number' ? leg.duration : 0), 0);
+    const durationB = optionB.reduce((sum, leg) => sum + (typeof leg.duration === 'number' ? leg.duration : 0), 0);
+    if (durationA !== durationB) return durationA - durationB;
+    return optionA.length - optionB.length;
+  });
+
+  const finalOptions = allPlannedTripOptions.slice(0, MAX_TRIP_OPTIONS_TO_RETURN);
+  console.log(`[PlanTrip Multi-Guide] Returning ${finalOptions.length} sorted/sliced trip options.`);
+  return finalOptions;
+}
