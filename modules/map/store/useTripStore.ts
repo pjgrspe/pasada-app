@@ -1,5 +1,6 @@
 // store/useTripStore.ts
 import { create } from 'zustand';
+import { CheckpointSilver, CheckpointViolet, Marisol } from '../utils/jeepRoutes';
 
 // Define the structure of a single trip
 export interface Trip {
@@ -25,9 +26,9 @@ interface TripState {
 
 // Example Dummy Data (Replace with actual fetching logic)
 const dummyTripsData: Trip[] = [
-    { id: '1', date: '2025-05-23', startTime: '14:05', endTime: '14:31', startLocation: 'Home Base', endLocation: 'Client Office', distance: '15 km', duration: '26m', routeCoordinates: [{ latitude: 14.8433, longitude: 120.8134 }, { latitude: 14.80, longitude: 120.90 }] },
-    { id: '2', date: '2025-05-22', startTime: '09:15', endTime: '09:45', startLocation: 'Client Office', endLocation: 'Warehouse', distance: '25 km', duration: '30m', routeCoordinates: [{ latitude: 14.80, longitude: 120.90 }, { latitude: 14.75, longitude: 120.95 }] },
-    { id: '3', date: '2025-05-21', startTime: '17:30', endTime: '18:10', startLocation: 'Warehouse', endLocation: 'Home Base', distance: '28 km', duration: '40m', routeCoordinates: [{ latitude: 14.75, longitude: 120.95 }, { latitude: 14.8433, longitude: 120.8134 }] },
+    { id: '1', date: '2025-05-23', startTime: '14:05', endTime: '14:31', startLocation: 'Home Base', endLocation: 'Client Office', distance: '15 km', duration: '26m', routeCoordinates: CheckpointSilver },
+    { id: '2', date: '2025-05-22', startTime: '09:15', endTime: '09:45', startLocation: 'Client Office', endLocation: 'Warehouse', distance: '25 km', duration: '30m', routeCoordinates: CheckpointViolet },
+    { id: '3', date: '2025-05-21', startTime: '17:30', endTime: '18:10', startLocation: 'Warehouse', endLocation: 'Home Base', distance: '28 km', duration: '40m', routeCoordinates: Marisol},
     { id: '4', date: '2025-05-20', startTime: '11:00', endTime: '11:20', startLocation: 'Home Base', endLocation: 'Supermarket', distance: '8 km', duration: '20m' },
 ];
 

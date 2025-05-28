@@ -1,43 +1,35 @@
 // app/(tabs)/index.tsx
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform, Alert } from 'react-native';
-import { Marker } from 'react-native-maps'; // Import Marker
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform, Alert, Button as RNButton } from 'react-native';
+import { Marker, Region } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import { Link, useRouter } from 'expo-router';
 
-// Components from your global components folder
-import RouteCard from '../../components/RouteCard';
-import Loader from '../../components/Loader';
+import RouteCard from '@/components/RouteCard';
+import Loader from '@/components/Loader';
 
-// New Map Module imports
-import MapViewComponent from '../../modules/map/components/MapViewComponent';
-import CarMarker from '../../modules/map/components/CarMarker';
-import MapPin from '../../modules/map/components/MapPin';
-import SearchBar from '../../modules/map/components/SearchBar';
-import RoutePolyline from '../../modules/map/components/RoutePolyLine'; // Import RoutePolyline
+import MapViewComponent from '@/modules/map/components/MapViewComponent';
+// import CarMarker from '@/modules/map/components/CarMarker'; // Not used in this specific test flow
+import MapPin from '@/modules/map/components/MapPin';
+import SearchBar from '@/modules/map/components/SearchBar';
+import RoutePolyline from '@/modules/map/components/RoutePolyLine';
 
-import { useMap } from '../../modules/map/hooks/useMap';
-import { useLocationTracking } from '../../modules/map/hooks/useLocationTracking';
-import { useRouting } from '../../modules/map/hooks/useRouting';
-import { useMapStore, MapMarker as AppMapMarker } from '../../modules/map/store/useMapStore'; // Import MapMarker type
-import mapApiService from '../../modules/map/services/mapApiServices';
-import { regionFromCoordinates } from '../../modules/map/utils/mapHelpers';
+import { useMap } from '@/modules/map/hooks/useMap';
+import { useLocationTracking } from '@/modules/map/hooks/useLocationTracking';
+import { useRouting } from '@/modules/map/hooks/useRouting';
+import { useMapStore, MapMarker as AppMapMarker, Route as MapDisplayRoute } from '@/modules/map/store/useMapStore';
+import mapApiService from '@/modules/map/services/mapApiServices';
 
+import { useTheme } from '@/hooks/useTheme';
+import { useTripStore } from '@/modules/map/store/useTripStore'; // Adjusted path
+import { sampleTrip } from '@/modules/map/utils/DebugTestTrip'; // Adjusted path
 
-import { useTheme } from '../../hooks/useTheme';
-import { useTripStore } from '../../store/useTripStore';
-
-const initialMapRegion = { // Default or last known region
-    latitude: 14.8433, // Malolos
-    longitude: 120.8134,
+const initialMapRegion: Region = {
+    latitude: 15.1446,
+    longitude: 120.5948,
     latitudeDelta: 0.0922,
     longitudeDelta: 0.0421,
 };
-
-const carMarkersData = [ // Example data
-    { id: 'car1', coordinate: { latitude: 14.8450, longitude: 120.8100 }, carName: 'CAR-001' },
-    { id: 'car2', coordinate: { latitude: 14.8400, longitude: 120.8150 }, carName: 'CAR-007' },
-];
 
 export default function DashboardScreen() {
     const router = useRouter();
@@ -45,26 +37,19 @@ export default function DashboardScreen() {
     const { trips, isLoading: tripsIsLoading, error: tripsError, fetchTrips, getRecentTrips } = useTripStore();
     const recentTrips = getRecentTrips(5);
 
-    // Search queries
     const [startPointQuery, setStartPointQuery] = useState('');
     const [destinationQuery, setDestinationQuery] = useState('');
 
-    const { setMapRef, currentRegion: mapHookRegion, onRegionChangeComplete, animateToRegion } = useMap();
+    const { setMapRef, animateToRegion, onRegionChangeComplete } = useMap();
     const { currentLocation, getSingleLocation: fetchDeviceLocation, locationPermissionStatus } = useLocationTracking();
-    const { fetchAndDisplayRoute, isFetchingRoute } = useRouting();
+
+    const { planAndDisplayTrip, isFetchingRoute, currentPlannedTripLegs, clearDisplayedTripInfo } = useRouting();
 
     const {
         markers: storeMarkers,
-        startPoint,
-        destinationPoint,
         routes,
-        setStartPoint,
-        setDestinationPoint,
         currentRegion: storeMapRegion,
         setCurrentRegion: setStoreCurrentRegion,
-        addMarker,
-        clearRoutes,
-        clearRoutePoints
     } = useMapStore();
 
 
@@ -72,23 +57,34 @@ export default function DashboardScreen() {
         if (trips.length === 0 && !tripsIsLoading && !tripsError) {
             fetchTrips();
         }
-        if (!currentLocation && locationPermissionStatus === 'granted' && !storeMapRegion) {
-            fetchDeviceLocation().then(loc => {
-                if (loc) {
-                    const region = {
-                        latitude: loc.coords.latitude,
-                        longitude: loc.coords.longitude,
-                        latitudeDelta: 0.0922,
-                        longitudeDelta: 0.0421,
-                    };
-                    setStoreCurrentRegion(region);
-                    animateToRegion(region); // Animate map to current location
-                } else {
-                     setStoreCurrentRegion(initialMapRegion); // Fallback to default
-                }
-            });
-        } else if (!storeMapRegion) {
-             setStoreCurrentRegion(initialMapRegion); // Fallback if no permission or location
+        if (!storeMapRegion) {
+             if (currentLocation && locationPermissionStatus === 'granted') {
+                const region = {
+                    latitude: currentLocation.coords.latitude,
+                    longitude: currentLocation.coords.longitude,
+                    latitudeDelta: 0.02,
+                    longitudeDelta: 0.01,
+                };
+                setStoreCurrentRegion(region);
+                if (animateToRegion) animateToRegion(region);
+            } else if (locationPermissionStatus === 'granted' && !currentLocation) {
+                fetchDeviceLocation().then(loc => {
+                    if (loc) {
+                        const region = {
+                            latitude: loc.coords.latitude,
+                            longitude: loc.coords.longitude,
+                            latitudeDelta: 0.02,
+                            longitudeDelta: 0.01,
+                        };
+                        setStoreCurrentRegion(region);
+                        if (animateToRegion) animateToRegion(region);
+                    } else {
+                         setStoreCurrentRegion(initialMapRegion);
+                    }
+                });
+            } else {
+                 setStoreCurrentRegion(initialMapRegion);
+            }
         }
     }, [
         trips.length, tripsIsLoading, tripsError, fetchTrips,
@@ -98,59 +94,45 @@ export default function DashboardScreen() {
 
     const handleGeocodeAndSetPoint = useCallback(async (query: string, type: 'start' | 'destination') => {
         if (!query.trim()) {
-            if (type === 'start') setStartPoint(null);
-            if (type === 'destination') setDestinationPoint(null);
             return;
         }
-
         const geocoded = await mapApiService.geocode(query);
         if (geocoded) {
-            const newMarker: AppMapMarker = {
-                id: type === 'start' ? 'startPoint' : 'destinationPoint',
-                coordinate: geocoded.coordinate,
-                title: geocoded.formattedAddress,
-                pinColor: type === 'start' ? colors.success : colors.error, // Example colors
-            };
+            const { coordinate, formattedAddress } = geocoded;
             if (type === 'start') {
-                setStartPoint(newMarker);
+                setStartPointQuery(formattedAddress);
             } else {
-                setDestinationPoint(newMarker);
+                setDestinationQuery(formattedAddress);
             }
-            // Animate to the new marker
-            animateToRegion({ ...geocoded.coordinate, latitudeDelta: 0.05, longitudeDelta: 0.05 });
+            if (animateToRegion) {
+                animateToRegion({ ...coordinate, latitudeDelta: 0.05, longitudeDelta: 0.05 });
+            }
         } else {
             Alert.alert("Geocode Error", `Could not find location for "${query}"`);
-            if (type === 'start') setStartPoint(null);
-            if (type === 'destination') setDestinationPoint(null);
         }
-    }, [setStartPoint, setDestinationPoint, animateToRegion, colors.success, colors.error]);
+    }, [animateToRegion]);
 
+    const handleTestTrip = () => {
+        console.log("Test button pressed. Planning trip with sample data:", sampleTrip);
+        if (sampleTrip.startPoint && sampleTrip.endPoint) {
+            planAndDisplayTrip(sampleTrip.startPoint, sampleTrip.endPoint, "Sample Start", "Sample End");
+        } else {
+            Alert.alert("Test Error", "Sample trip data is incomplete.");
+        }
+    };
 
-    // Effect to trigger routing when both points are set
-    useEffect(() => {
-        if (startPoint && destinationPoint) {
-            clearRoutes(); // Clear previous routes
-            fetchAndDisplayRoute(startPoint.coordinate, destinationPoint.coordinate);
-        }
-        // If one point is cleared, also clear routes
-        if ((!startPoint || !destinationPoint) && routes.length > 0) {
-            clearRoutes();
-        }
-    }, [startPoint, destinationPoint, fetchAndDisplayRoute, clearRoutes, routes.length]);
+    const handleClearAll = () => {
+        useMapStore.getState().clearRoutePoints();
+        setStartPointQuery('');
+        setDestinationQuery('');
+        clearDisplayedTripInfo();
+        const targetRegion = currentLocation && currentLocation.coords
+            ? { latitude: currentLocation.coords.latitude, longitude: currentLocation.coords.longitude, latitudeDelta: 0.02, longitudeDelta: 0.01 }
+            : initialMapRegion;
 
-    // Effect to adjust map region when start/destination points change
-     useEffect(() => {
-        const activePoints = [startPoint, destinationPoint].filter(p => p !== null) as AppMapMarker[];
-        if (activePoints.length > 0) {
-            const coordinates = activePoints.map(p => p.coordinate);
-            const newRegion = regionFromCoordinates(coordinates, 0.5); // 50% padding
-            if (newRegion) {
-                animateToRegion(newRegion);
-            }
-        } else if (currentLocation) { // Fallback to current location if no points
-            animateToRegion({ ...currentLocation.coords, latitudeDelta: 0.0922, longitudeDelta: 0.0421 });
-        }
-    }, [startPoint, destinationPoint, currentLocation, animateToRegion]);
+        if (animateToRegion) animateToRegion(targetRegion);
+        else setStoreCurrentRegion(targetRegion);
+    };
 
 
     const handleRouteCardPress = (id: string) => {
@@ -158,39 +140,75 @@ export default function DashboardScreen() {
     };
 
     const dynamicStyles = StyleSheet.create({
-        flexContainer: { backgroundColor: colors.background },
+        flexContainer: { backgroundColor: colors.background, flex: 1 },
         headerBar: { backgroundColor: isDarkMode ? colors.card : '#FFD700', },
         headerTitle: { color: isDarkMode ? colors.text : '#333' },
-        planningContainer: { backgroundColor: colors.card, }, // Use theme color
+        planningContainer: { backgroundColor: colors.card, },
         mapInfoButton: { backgroundColor: colors.card },
         mapInfoIcon: { color: colors.text },
         previousRoutesContainer: { backgroundColor: colors.card },
         previousTitle: { color: colors.text },
         arrowButton: { backgroundColor: colors.background },
         arrowIcon: { color: colors.text },
-        inputStyle: { color: colors.text, backgroundColor: colors.inputBackground }, // For SearchBar inputs
-        inputContainer: { backgroundColor: colors.inputBackground, borderColor: colors.border }
+        inputStyle: { color: colors.text, backgroundColor: colors.inputBackground },
+        inputContainer: { backgroundColor: colors.inputBackground, borderColor: colors.border },
+        instructionsContainer: {
+            padding: 15,
+            backgroundColor: colors.card,
+            margin: 10,
+            borderRadius: 8,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 0.05,
+            shadowRadius: 2,
+            elevation: 2,
+        },
+        legInstruction: {
+            marginBottom: 10,
+            paddingBottom: 10,
+            borderBottomWidth: 1,
+            borderBottomColor: colors.border,
+        },
+        legType: {
+            fontWeight: 'bold',
+            fontSize: 16,
+            color: colors.primary,
+            marginBottom: 4,
+        },
+        legDetail: {
+            fontSize: 14,
+            color: colors.text,
+            opacity: 0.8,
+        },
+        testButtonContainer: {
+            marginVertical: 10,
+            marginHorizontal: 20,
+        }
     });
 
     return (
         <KeyboardAvoidingView
-            style={[styles.flexContainer, dynamicStyles.flexContainer]}
+            style={dynamicStyles.flexContainer}
             behavior={Platform.OS === "ios" ? "padding" : "height"}
-            keyboardVerticalOffset={Platform.OS === "ios" ? 64 : 0} // Adjust as needed
+            keyboardVerticalOffset={Platform.OS === "ios" ? 64 : 0}
         >
-            <View style={[styles.flexContainer, dynamicStyles.flexContainer]}>
+            <View style={dynamicStyles.flexContainer}>
                 <View style={[styles.headerBar, dynamicStyles.headerBar]}>
                     <Text style={[styles.headerTitle, dynamicStyles.headerTitle]}>Plan & Map</Text>
-                    <TouchableOpacity onPress={() => router.push('/(tabs)/notifications')}>
+                    <TouchableOpacity onPress={() => router.push('../(tabs)/notifications')}>
                         <Ionicons name="notifications-outline" size={26} color={dynamicStyles.headerTitle.color} />
                     </TouchableOpacity>
                 </View>
 
                 <ScrollView
-                    style={[styles.flexContainer, dynamicStyles.flexContainer]}
+                    style={dynamicStyles.flexContainer}
                     contentContainerStyle={styles.scrollContent}
                     keyboardShouldPersistTaps="handled"
                 >
+                    <View style={dynamicStyles.testButtonContainer}>
+                        <RNButton title="Test Sample Trip" onPress={handleTestTrip} color={colors.primary} />
+                    </View>
+
                     <View style={[styles.planningContainer, dynamicStyles.planningContainer]}>
                         <SearchBar
                             placeholder="Current Location / Start Point"
@@ -199,8 +217,6 @@ export default function DashboardScreen() {
                             onSearchSubmit={() => handleGeocodeAndSetPoint(startPointQuery, 'start')}
                             iconName="navigate-circle-outline"
                             style={dynamicStyles.inputContainer}
-                            // style prop on Input inside SearchBar needs to target text color:
-                            // textStyle={dynamicStyles.inputStyle} // Add textStyle to SearchBar if needed
                         />
                         <View style={styles.separatorLine}></View>
                         <SearchBar
@@ -212,15 +228,11 @@ export default function DashboardScreen() {
                             style={dynamicStyles.inputContainer}
                         />
                         <View style={styles.optionsRow}>
-                            <TouchableOpacity style={styles.timeButton}>
+                             <TouchableOpacity style={styles.timeButton}>
                                  <Ionicons name="time-outline" size={18} color="#FFF" />
                                  <Text style={styles.timeText}>Now</Text>
                              </TouchableOpacity>
-                             <TouchableOpacity style={styles.timeButton} onPress={() => {
-                                 clearRoutePoints();
-                                 setStartPointQuery('');
-                                 setDestinationQuery('');
-                             }}>
+                             <TouchableOpacity style={styles.timeButton} onPress={handleClearAll}>
                                  <Ionicons name="close-circle-outline" size={18} color="#FFF" />
                                  <Text style={styles.timeText}>Clear</Text>
                              </TouchableOpacity>
@@ -238,40 +250,64 @@ export default function DashboardScreen() {
                           ref={setMapRef}
                           initialRegion={storeMapRegion || initialMapRegion}
                           onRegionChangeComplete={onRegionChangeComplete}
-                          showsUserLocation={locationPermissionStatus === 'granted'} // Show user dot if permission given
-                          showsMyLocationButton={false} // We can add a custom one if needed
+                          showsUserLocation={locationPermissionStatus === 'granted'}
+                          showsMyLocationButton={false}
                         >
-                            {/* Display all markers from the store */}
                             {storeMarkers.map(marker => (
                                 <Marker
                                     key={marker.id}
                                     coordinate={marker.coordinate}
                                     title={marker.title}
                                     description={marker.description}
-                                    pinColor={marker.pinColor} // Works with default marker, or use MapPin for custom
                                 >
-                                   {/* Example: Use MapPin for route points, CarMarker for others */}
-                                   {(marker.id === 'startPoint' || marker.id === 'destinationPoint') ?
-                                        <MapPin type={marker.id === 'startPoint' ? 'start' : 'end'} size={36}/>
-                                        : <CarMarker coordinate={marker.coordinate} carName={marker.title} />
-                                    }
+                                    <MapPin
+                                        type={marker.id === 'startPoint' ? 'start' : marker.id === 'destinationPoint' ? 'end' : 'generic'}
+                                        color={marker.pinColor}
+                                        size={36}
+                                    />
                                 </Marker>
                             ))}
 
-                            {/* Display routes from the store */}
-                            {routes.map(route => (
-                                <RoutePolyline key={route.id} coordinates={route.coordinates} />
+                            {/* CORRECTED LINE BELOW */}
+                            {routes.map((route: MapDisplayRoute) => (
+                                <RoutePolyline
+                                  key={route.id}
+                                  coordinates={route.coordinates}
+                                  strokeColor={route.color || (route.routeType === 'walk' ? colors.secondary : colors.primary)}
+                                  strokeWidth={route.routeType === 'walk' ? 3 : 6}
+                                  lineDashPattern={route.routeType === 'walk' ? [1, 8] : undefined}
+                                  zIndex={route.routeType === 'jeepney' ? 1 : 0}
+                                />
                             ))}
-
                         </MapViewComponent>
-                        <TouchableOpacity style={[styles.mapInfoButton, dynamicStyles.mapInfoButton]} onPress={() => currentLocation && animateToRegion({...currentLocation.coords, latitudeDelta: 0.02, longitudeDelta: 0.01})}>
+                        <TouchableOpacity
+                            style={[styles.mapInfoButton, dynamicStyles.mapInfoButton]}
+                            onPress={() => currentLocation && animateToRegion && animateToRegion({...currentLocation.coords, latitudeDelta: 0.02, longitudeDelta: 0.01})}
+                        >
                             <Ionicons name="navigate-circle-outline" size={24} color={dynamicStyles.mapInfoIcon.color} />
                         </TouchableOpacity>
-                         {isFetchingRoute && <View style={styles.loadingOverlay}><Loader text="Fetching route..."/></View>}
+                         {isFetchingRoute && <View style={styles.loadingOverlay}><Loader text="Planning trip..."/></View>}
                     </View>
 
+                    {currentPlannedTripLegs && currentPlannedTripLegs.length > 0 && (
+                        <View style={dynamicStyles.instructionsContainer}>
+                            <Text style={[styles.previousTitle, dynamicStyles.previousTitle, {marginBottom: 10}]}>Trip Plan:</Text>
+                            {currentPlannedTripLegs.map((leg, index) => (
+                                <View key={index} style={dynamicStyles.legInstruction}>
+                                <Text style={dynamicStyles.legType}>
+                                    {leg.type === 'walk' ? '🚶 Walk' : `🚌 Jeepney: ${leg.routeName || leg.routeId}`}
+                                </Text>
+                                {leg.instructions && <Text style={dynamicStyles.legDetail}>{leg.instructions}</Text>}
+                                {typeof leg.distance === 'number' && <Text style={dynamicStyles.legDetail}>Distance: {(leg.distance / 1000).toFixed(1)} km</Text>}
+                                {typeof leg.duration === 'number' && <Text style={dynamicStyles.legDetail}>Est. Time: {Math.round(leg.duration / 60)} min</Text>}
+                                {leg.startAddress && <Text style={dynamicStyles.legDetail}>From: {leg.startAddress}</Text>}
+                                {leg.endAddress && <Text style={dynamicStyles.legDetail}>To: {leg.endAddress}</Text>}
+                                </View>
+                            ))}
+                        </View>
+                    )}
+
                     <View style={[styles.previousRoutesContainer, dynamicStyles.previousRoutesContainer]}>
-                       {/* ... (rest of the Previous Routes section remains same) ... */}
                          <View style={styles.previousHeader}>
                             <Text style={[styles.previousTitle, dynamicStyles.previousTitle]}>Recent Trips</Text>
                             <Link href="/(tabs)/trips" asChild>
@@ -308,10 +344,9 @@ export default function DashboardScreen() {
     );
 }
 
-
 const styles = StyleSheet.create({
     flexContainer: { flex: 1 },
-    scrollContent: { paddingBottom: 20 },
+    scrollContent: { paddingBottom: 20, flexGrow: 1 },
     headerBar: {
         flexDirection: 'row',
         justifyContent: 'space-between',
@@ -323,28 +358,51 @@ const styles = StyleSheet.create({
     headerTitle: { fontSize: 20, fontWeight: 'bold' },
     planningContainer: {
         marginHorizontal: 20,
-        marginTop: 20,
+        marginTop: 10,
         marginBottom: 10,
         borderRadius: 20,
-        padding: 15, // Reduced padding
+        padding: 15,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 1 },
         shadowOpacity: 0.1,
         shadowRadius: 3,
         elevation: 3,
     },
-    separatorLine: { height: 1, backgroundColor: '#4A4A4C', marginVertical: 8 }, // Simplified
+    separatorLine: { height: 1, backgroundColor: '#4A4A4C', marginVertical: 8 },
     optionsRow: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', marginTop: 15 },
     timeButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#4A4A4C', paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20 },
     timeText: { color: '#FFF', marginLeft: 5, fontSize: 14 },
     modeButton: { backgroundColor: '#4A4A4C', padding: 8, borderRadius: 20 },
     settingsButton: { backgroundColor: '#FF8C00', padding: 10, borderRadius: 10 },
-    mapContainer: { height: 350, marginHorizontal: 20, borderRadius: 15, overflow: 'hidden', backgroundColor: '#E0E0E0', position: 'relative', marginTop: 10 },
-    mapInfoButton: { position: 'absolute', top: 10, right: 10, padding: 8, borderRadius: 20 },
-    previousRoutesContainer: { marginTop: 20, paddingVertical: 20, borderTopLeftRadius: 20, borderTopRightRadius: 20 },
-    previousHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginBottom: 15 },
+    mapContainer: {
+        height: 300,
+        marginHorizontal: 20,
+        borderRadius: 15,
+        overflow: 'hidden',
+        backgroundColor: '#E0E0E0',
+        position: 'relative',
+        marginTop: 10,
+    },
+    mapInfoButton: {
+        position: 'absolute',
+        top: 10,
+        right: 10,
+        padding: 8,
+        borderRadius: 20,
+    },
+    previousRoutesContainer: {
+        marginTop: 20,
+        paddingVertical: 20,
+    },
+    previousHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingHorizontal: 20,
+        marginBottom: 15
+    },
     previousTitle: { fontSize: 18, fontWeight: 'bold' },
-    arrowButton: { padding: 8, borderRadius: 15 },
+    arrowButton: { padding: 8, borderRadius: 15, },
     loadingOverlay: {
         ...StyleSheet.absoluteFillObject,
         backgroundColor: 'rgba(0,0,0,0.3)',

@@ -13,6 +13,9 @@ export interface MapMarker { // Exporting for use in other files
 export interface Route { // Exporting for use in other files
   id: string;
   coordinates: { latitude: number; longitude: number }[];
+  routeType: 'jeepney' | 'walk'; // Type of route
+  color: string; // Color for the route line
+  routeName?: string; // Optional: name of the jeepney route
 }
 
 interface MapState {
