@@ -40,6 +40,9 @@ import { useTripStore } from '@/modules/map/store/useTripStore';
 import * as DebugTestTrip from '@/modules/map/utils/DebugTestTrip';
 import { Text } from '@/components/Themed';
 import { DEBUG_MODE_ENABLED } from '@/modules/map/constants/tripPlanningConstants';
+import { useActiveTripStore } from '@/modules/map/store/useActiveTripStore';
+import { ActiveTripPanel } from '@/modules/map/components/ActiveTripPanel';
+import { useAuth } from '@/modules/auth/hooks/useAuth'; // Import your auth hook
 
 const initialMapRegion: Region = {
     latitude: 15.1446, 
@@ -101,6 +104,9 @@ export default function DashboardScreen() {
         isLoading: mapIsLoading,
         loadingStatus, // Add this
     } = useMapStore();
+
+    const { activeTrip, startTrip } = useActiveTripStore();
+    const authState = useAuth(); // Assuming you have an auth hook
 
 
     // Add location picker handlers
@@ -304,6 +310,57 @@ export default function DashboardScreen() {
         router.push(`/(tabs)/trips/${id}`);
     };
 
+    const handleStartTrip = async () => {
+        if (!currentDisplayedTrip || !allTripOptions || selectedTripIndex >= allTripOptions.length) {
+            Alert.alert("Error", "No valid trip option selected");
+            return;
+        }
+        
+        const startMarker = storeMarkers.find(m => m.id === 'startPoint');
+        const destMarker = storeMarkers.find(m => m.id === 'destinationPoint');
+        
+        if (!startMarker || !destMarker) {
+            Alert.alert("Error", "Start or destination point not found");
+            return;
+        }
+        
+        const startLocation = {
+            name: startMarker.title || "Start Point",
+            latitude: startMarker.coordinate.latitude,
+            longitude: startMarker.coordinate.longitude
+        };
+        
+        const endLocation = {
+            name: destMarker.title || "Destination",
+            latitude: destMarker.coordinate.latitude,
+            longitude: destMarker.coordinate.longitude
+        };
+        
+        try {
+            const tripId = await startTrip(
+                startLocation,
+                endLocation,
+                selectedTripIndex,
+                allTripOptions[selectedTripIndex]
+            );
+            
+            if (tripId) {
+                console.log(`Trip started with ID: ${tripId}`);
+            } else {
+                Alert.alert(
+                    "Error Starting Trip",
+                    "Could not start a trip. Please try again or check your connection."
+                );
+            }
+        } catch (error) {
+            console.error("Error starting trip:", error);
+            Alert.alert(
+                "Error",
+                "An unexpected error occurred while starting your trip."
+            );
+        }
+    };
+
     // --- Define sections for the main FlatList ---
     const listSections: Array<{type: string, key: string, data?: any}> = [
         { type: 'planning_inputs', key: 'planning_inputs' },
@@ -444,25 +501,51 @@ export default function DashboardScreen() {
             case 'trip_option_tabs':
                 return (
                     <View style={[styles.tripOptionsContainer, {backgroundColor: colors.card}]}>
-                        <HorizontalScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsContainerScrollView}>
-                            {item.data.options.map((option: PlannedTripLeg[], index: number) => (
-                              <TouchableOpacity
-                                key={index}
-                                style={[
-                                  styles.tabButton, { borderColor: colors.border },
-                                  item.data.selectedIndex === index ? { backgroundColor: colors.primary, borderBottomWidth: 0 } : { backgroundColor: colors.background },
-                                ]}
-                                onPress={() => item.data.onSelect(index)}
-                              >
-                                <Text style={[ styles.tabText, item.data.selectedIndex === index ? { color: colors.headerText } : { color: colors.text } ]}>
-                                  Option {index + 1}
-                                </Text>
-                                <Text style={[ styles.tabSummaryText, item.data.selectedIndex === index ? { color: colors.headerText, opacity: 0.8 } : { color: colors.text, opacity: 0.7 } ]}>
-                                    ({getTripSummaryForTab(option)})
-                                </Text>
-                              </TouchableOpacity>
-                            ))}
-                        </HorizontalScrollView>
+                        {activeTrip && activeTrip.status === 'active' ? (
+                            <ActiveTripPanel />
+                        ) : (
+                            <>
+                                <HorizontalScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsContainerScrollView}>
+                                    <View style={styles.tabsContainer}>
+                                        {allTripOptions?.map((option, index) => (
+                                            <TouchableOpacity
+                                                key={index}
+                                                style={[
+                                                    styles.tripOptionTab,
+                                                    selectedTripIndex === index ? {backgroundColor: colors.primary} : {backgroundColor: colors.card}
+                                                ]}
+                                                onPress={() => selectTripOption(index)}
+                                            >
+                                                <Text style={[
+                                                    styles.tripOptionTabText,
+                                                    selectedTripIndex === index ? {color: colors.headerText} : {color: colors.text}
+                                                ]}>
+                                                    Option {index + 1}
+                                                </Text>
+                                                <Text style={[
+                                                    styles.tripOptionTabDescription,
+                                                    selectedTripIndex === index ? {color: colors.headerText} : {color: colors.text}
+                                                ]}>
+                                                    {getTripSummaryForTab(option)}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        ))}
+                                    </View>
+                                </HorizontalScrollView>
+                                
+                                {/* Choose This Option Button */}
+                                {allTripOptions && allTripOptions.length > 0 && (
+                                    <TouchableOpacity
+                                        style={[styles.chooseOptionButton, {backgroundColor: colors.success}]}
+                                        onPress={handleStartTrip}
+                                    >
+                                        <Text style={[styles.chooseOptionButtonText, {color: colors.headerText}]}>
+                                            Choose This Option
+                                        </Text>
+                                    </TouchableOpacity>
+                                )}
+                            </>
+                        )}
                     </View>
                 );
             case 'instruction_leg':
@@ -555,6 +638,19 @@ export default function DashboardScreen() {
             shadowOpacity: 0.2,
             shadowRadius: 2,
             zIndex: 1500,
+        },
+        chooseOptionButton: {
+            paddingVertical: 12,
+            borderRadius: 8,
+            marginHorizontal: 16,
+            marginTop: 8,
+            marginBottom: 16,
+            alignItems: 'center',
+            justifyContent: 'center',
+        },
+        chooseOptionButtonText: {
+            fontSize: 16,
+            fontWeight: '600',
         },
     });
 
@@ -668,7 +764,10 @@ const styles = StyleSheet.create({
         paddingHorizontal: 5,
         borderBottomWidth: 1,
     },
-    tabButton: {
+    tabsContainer: {
+        flexDirection: 'row',
+    },
+    tripOptionTab: {
         paddingVertical: 10,
         paddingHorizontal: 16,
         borderRadius: 20,
@@ -678,8 +777,8 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         minHeight: 50,
     },
-    tabText: { fontSize: 14, fontWeight: '600', textAlign: 'center', },
-    tabSummaryText: { fontSize: 11, textAlign: 'center', marginTop: 2, },
+    tripOptionTabText: { fontSize: 14, fontWeight: '600', textAlign: 'center', },
+    tripOptionTabDescription: { fontSize: 11, textAlign: 'center', marginTop: 2, },
     previousRoutesContainer: { /* Base styles, theming in dynamicStyles */ },
     previousHeader: {
         flexDirection: 'row',
@@ -698,5 +797,18 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         zIndex: 1000,
         borderRadius: 15,
+    },
+    chooseOptionButton: {
+        paddingVertical: 12,
+        borderRadius: 8,
+        marginHorizontal: 16,
+        marginTop: 8,
+        marginBottom: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    chooseOptionButtonText: {
+        fontSize: 16,
+        fontWeight: '600',
     },
 });

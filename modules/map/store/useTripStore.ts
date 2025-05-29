@@ -1,18 +1,20 @@
 // store/useTripStore.ts
 import { create } from 'zustand';
-import { CheckpointSilver, CheckpointViolet, Marisol } from '../utils/jeepRoutes';
+import { auth } from '@/FirebaseConfig';
+import { getUserTrips, Trip as FirebaseTrip } from '@/services/tripService';
 
-// Define the structure of a single trip
+// Define the structure of a single trip for display
 export interface Trip {
   id: string;
-  date: string; // Consider using Date objects or ISO strings
+  date: string;
   startTime: string;
   endTime: string;
   startLocation: string;
   endLocation: string;
-  distance: string; // Or number
+  distance: string;
   duration: string;
-  routeCoordinates?: { latitude: number; longitude: number }[]; // Optional route
+  status: 'active' | 'completed' | 'cancelled';
+  routeCoordinates?: { latitude: number; longitude: number }[];
 }
 
 // Define the state structure
@@ -20,40 +22,94 @@ interface TripState {
   trips: Trip[];
   isLoading: boolean;
   error: string | null;
-  fetchTrips: () => Promise<void>; // Function to load trips (e.g., from API/local)
+  fetchTrips: () => Promise<void>;
   getRecentTrips: (count: number) => Trip[];
 }
 
-// Example Dummy Data (Replace with actual fetching logic)
-const dummyTripsData: Trip[] = [
-    { id: '1', date: '2025-05-23', startTime: '14:05', endTime: '14:31', startLocation: 'Home Base', endLocation: 'Client Office', distance: '15 km', duration: '26m', routeCoordinates: CheckpointSilver },
-    { id: '2', date: '2025-05-22', startTime: '09:15', endTime: '09:45', startLocation: 'Client Office', endLocation: 'Warehouse', distance: '25 km', duration: '30m', routeCoordinates: CheckpointViolet },
-    { id: '3', date: '2025-05-21', startTime: '17:30', endTime: '18:10', startLocation: 'Warehouse', endLocation: 'Home Base', distance: '28 km', duration: '40m', routeCoordinates: Marisol},
-    { id: '4', date: '2025-05-20', startTime: '11:00', endTime: '11:20', startLocation: 'Home Base', endLocation: 'Supermarket', distance: '8 km', duration: '20m' },
-];
+// Helper function to convert Firebase trip to display trip
+function convertFirebaseTripToDisplayTrip(fbTrip: FirebaseTrip): Trip {
+  // Format date from timestamp
+  const startDate = new Date(fbTrip.startTime);
+  const formattedDate = startDate.toISOString().split('T')[0]; // YYYY-MM-DD
+  
+  // Format times
+  const startTimeStr = startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  
+  // Format end time if available
+  let endTimeStr = 'In progress';
+  if (fbTrip.endTime) {
+    const endDate = new Date(fbTrip.endTime);
+    endTimeStr = endDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+  
+  // Calculate distance in km
+  const distanceKm = (fbTrip.totalDistance / 1000).toFixed(1);
+  
+  // Calculate duration
+  let durationStr = '';
+  if (fbTrip.endTime) {
+    const durationMinutes = Math.round((fbTrip.endTime - fbTrip.startTime) / 60000);
+    durationStr = `${durationMinutes}m`;
+  } else {
+    durationStr = `${Math.round(fbTrip.estimatedDuration / 60)}m (est)`;
+  }
+  
+  // Extract route coordinates
+  const routeCoordinates = fbTrip.steps.flatMap(step => step.coordinates || []);
+  
+  return {
+    id: fbTrip.id,
+    date: formattedDate,
+    startTime: startTimeStr,
+    endTime: endTimeStr,
+    startLocation: fbTrip.startLocation.name,
+    endLocation: fbTrip.endLocation.name,
+    distance: `${distanceKm} km`,
+    duration: durationStr,
+    status: fbTrip.status,
+    routeCoordinates
+  };
+}
 
 export const useTripStore = create<TripState>((set, get) => ({
-  trips: [], // Start empty, fetch on load
+  trips: [],
   isLoading: false,
   error: null,
 
-  // --- Actions ---
   fetchTrips: async () => {
     set({ isLoading: true, error: null });
     try {
-      // ** In a real app, you'd fetch from an API or AsyncStorage here **
-      await new Promise(resolve => setTimeout(resolve, 500)); // Simulate loading
-      set({ trips: dummyTripsData, isLoading: false });
+      // Check if user is authenticated
+      if (!auth.currentUser) {
+        set({ 
+          error: 'You must be logged in to view trips',
+          isLoading: false,
+          trips: [] 
+        });
+        return;
+      }
+      
+      // Fetch trips from Firebase
+      const firebaseTrips = await getUserTrips();
+      
+      // Convert to display format
+      const formattedTrips = firebaseTrips.map(convertFirebaseTripToDisplayTrip);
+      
+      // Sort by date (newest first)
+      formattedTrips.sort((a, b) => {
+        return new Date(b.date).getTime() - new Date(a.date).getTime();
+      });
+      
+      set({ trips: formattedTrips, isLoading: false });
     } catch (e: any) {
       set({ error: e.message || 'Failed to fetch trips', isLoading: false });
     }
   },
 
-  // --- Selectors / Getters ---
+  // Selectors / Getters
   getRecentTrips: (count: number) => {
-      const allTrips = get().trips;
-      // Sort by date/time if needed before slicing, assuming newest first for now
-      return allTrips.slice(0, count);
+    const allTrips = get().trips;
+    return allTrips.slice(0, count);
   }
 }));
 

@@ -31,6 +31,9 @@ const TripDetailsScreen = () => {
         text: { color: colors.text },
         label: { color: colors.text, opacity: 0.7 },
         error: { color: colors.error },
+        statusActive: { color: colors.primary },
+        statusCompleted: { color: colors.success },
+        statusCancelled: { color: colors.error },
     });
 
     if (tripsIsLoading && !trip) {
@@ -58,6 +61,15 @@ const TripDetailsScreen = () => {
             latitudeDelta: 0.5,
             longitudeDelta: 0.5,
         };
+        
+    const getStatusStyle = (status: string) => {
+        switch(status) {
+            case 'active': return dynamicStyles.statusActive;
+            case 'completed': return dynamicStyles.statusCompleted;
+            case 'cancelled': return dynamicStyles.statusCancelled;
+            default: return dynamicStyles.text;
+        }
+    };
 
     return (
         <ScrollView style={[styles.container, dynamicStyles.background]}>
@@ -66,6 +78,13 @@ const TripDetailsScreen = () => {
                 <Ionicons name="chevron-forward" size={20} color={colors.primary} style={styles.chevron} />{' '}
                 {trip.endLocation ?? 'N/A'}
             </Text>
+            
+            {/* Status Badge */}
+            <View style={[styles.statusBadge, { backgroundColor: colors.card }]}>
+                <Text style={[styles.statusText, getStatusStyle(trip.status)]}>
+                    {trip.status?.toUpperCase()}
+                </Text>
+            </View>
 
             <View style={[styles.mapContainer, dynamicStyles.card]}>
                 <MapViewComponent initialRegion={initialRegion}>
@@ -91,7 +110,7 @@ const TripDetailsScreen = () => {
 
             <View style={[styles.detailCard, dynamicStyles.card]}>
                 <Detail label="Date" value={trip.date ?? 'N/A'} icon="calendar" textStyle={dynamicStyles.text} />
-                <Detail label="Time" value={`${trip.startTime ?? 'N/A'} – ${trip.endTime ?? 'N/A'}`} icon="time" textStyle={dynamicStyles.text} />
+                <Detail label="Time" value={`${trip.startTime ?? 'N/A'} – ${trip.endTime ?? 'In progress'}`} icon="time" textStyle={dynamicStyles.text} />
                 <Detail label="Distance" value={trip.distance ?? 'N/A'} icon="walk" textStyle={dynamicStyles.text} />
                 <Detail label="Duration" value={trip.duration ?? 'N/A'} icon="hourglass" textStyle={dynamicStyles.text} />
             </View>
@@ -126,7 +145,19 @@ const styles = StyleSheet.create({
         fontSize: 22,
         fontWeight: '700',
         textAlign: 'center',
-        paddingVertical: 24,
+        marginVertical: 16,
+        paddingHorizontal: 16,
+    },
+    statusBadge: {
+        alignSelf: 'center',
+        paddingVertical: 6,
+        paddingHorizontal: 12,
+        borderRadius: 16,
+        marginBottom: 16,
+    },
+    statusText: {
+        fontSize: 14,
+        fontWeight: '600',
     },
     mapContainer: {
         height: 280,

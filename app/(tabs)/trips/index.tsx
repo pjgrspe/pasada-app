@@ -1,6 +1,4 @@
-// Modify: pasada-app/app/(tabs)/trips/index.tsx
-// Remove the <Text style={[styles.header, { color: colors.text }]}>My Trip History</Text>
-// The title "My Trips" is now handled by the ScreenHeader in app/(tabs)/trips/_layout.tsx
+// Update the trips screen with status indicators and filters
 import React, { useEffect, useState, useMemo } from 'react';
 import {
     View,
@@ -13,42 +11,56 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '../../../hooks/useTheme';
-import { useTripStore, Trip } from '../../../modules/map/store/useTripStore';
+import { useTripStore, Trip } from '@/modules/map/store/useTripStore';
 import Loader from '../../../components/Loader';
 import Icon from 'react-native-vector-icons/Ionicons';
 
 const TripListItem = ({ item }: { item: Trip }) => {
-    const { colors } = useTheme(); // Removed unused themeMode, setThemeMode, isDarkMode
+    const { colors } = useTheme();
     const router = useRouter();
+
+    // Helper to determine the status indicator color
+    const getStatusColor = () => {
+        switch (item.status) {
+            case 'active': return colors.primary;
+            case 'completed': return colors.success;
+            case 'cancelled': return colors.error;
+            default: return colors.text;
+        }
+    };
 
     return (
         <TouchableOpacity
             style={[styles.itemContainer, {
                 backgroundColor: colors.card,
-                shadowColor: '#000', // Consider theming shadow if needed
+                shadowColor: '#000',
                 borderColor: colors.border,
             }]}
             activeOpacity={0.8}
             onPress={() => router.push(`/(tabs)/trips/${item.id}`)}
         >
-            <View style={styles.locationRow}>
-                <Text style={[styles.itemTitle, { color: colors.text }]} numberOfLines={1} ellipsizeMode="tail">
-                    {item.startLocation}
+            {/* Status indicator */}
+            <View style={[styles.statusIndicator, { backgroundColor: getStatusColor() }]} />
+            
+            <View style={styles.itemContent}>
+                <View style={styles.locationRow}>
+                    <Text style={[styles.itemTitle, { color: colors.text }]} numberOfLines={1} ellipsizeMode="tail">
+                        {item.startLocation}
+                    </Text>
+                    <Icon name="chevron-forward" size={20} color={colors.primary} style={styles.chevron} />
+                    <Text style={[styles.itemTitle, { color: colors.text }]} numberOfLines={1} ellipsizeMode="tail">
+                        {item.endLocation}
+                    </Text>
+                </View>
+
+                <Text style={[styles.itemSubtitle, { color: colors.text, opacity: 0.75 }]}>
+                    {item.date} | {item.startTime}–{item.endTime}
                 </Text>
-                <Icon name="chevron-forward" size={20} color={colors.primary} style={styles.chevron} />
-                <Text style={[styles.itemTitle, { color: colors.text }]} numberOfLines={1} ellipsizeMode="tail">
-                    {item.endLocation}
+
+                <Text style={[styles.itemDetails, { color: colors.text, opacity: 0.6 }]}>
+                    {item.distance} • {item.duration.replace('m', '')} min
                 </Text>
             </View>
-
-            <Text style={[styles.itemSubtitle, { color: colors.text, opacity: 0.75 }]}>
-                {item.date} | {item.startTime}–{item.endTime}
-            </Text>
-
-            <Text style={[styles.itemDetails, { color: colors.text, opacity: 0.6 }]}>
-                {item.distance} • {item.duration.replace('m', '')} min
-            </Text>
-
         </TouchableOpacity>
     );
 };
@@ -57,19 +69,23 @@ const TripListScreen = () => {
     const { colors } = useTheme();
     const { trips, isLoading, error, fetchTrips } = useTripStore();
     const [searchQuery, setSearchQuery] = useState('');
+    const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'completed' | 'cancelled'>('all');
 
     useEffect(() => {
-        if (trips.length === 0 && !isLoading && !error) { // Fetch only if not already loading and no error
+        if (trips.length === 0 && !isLoading && !error) {
             fetchTrips();
         }
-    }, [fetchTrips, trips.length, isLoading, error]); // Added isLoading and error to dependencies
+    }, [fetchTrips, trips.length, isLoading, error]);
 
     const filteredTrips = useMemo(() =>
         trips.filter(trip =>
-            trip.startLocation.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            trip.endLocation.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            trip.date.includes(searchQuery) // Allow searching by date
-        ), [trips, searchQuery]);
+            // Apply text search
+            (trip.startLocation.toLowerCase().includes(searchQuery.toLowerCase()) ||
+             trip.endLocation.toLowerCase().includes(searchQuery.toLowerCase()) ||
+             trip.date.includes(searchQuery)) &&
+            // Apply status filter
+            (statusFilter === 'all' || trip.status === statusFilter)
+        ), [trips, searchQuery, statusFilter]);
 
     if (isLoading && trips.length === 0) {
         return (
@@ -79,7 +95,7 @@ const TripListScreen = () => {
         );
     }
 
-    if (error && trips.length === 0) { // Show error only if no trips are loaded
+    if (error && trips.length === 0) {
         return (
             <View style={[styles.centered, { backgroundColor: colors.background }]}>
                 <Text style={{ color: colors.error, fontSize: 16 }}>Error loading trips: {error}</Text>
@@ -97,7 +113,7 @@ const TripListScreen = () => {
                     backgroundColor: colors.card,
                     color: colors.text,
                     borderColor: colors.border,
-                    shadowColor: '#000', // Consider theming
+                    shadowColor: '#000',
                 }]}
                 placeholder="Search by location or date..."
                 placeholderTextColor={colors.text + '88'}
@@ -105,13 +121,33 @@ const TripListScreen = () => {
                 onChangeText={setSearchQuery}
                 clearButtonMode="while-editing"
                 keyboardType="default"
-                autoCapitalize="words" // Consider 'none' if searching dates frequently
+                autoCapitalize="words"
                 accessibilityLabel="Search trips"
                 accessibilityHint="Filter trips by start or end location, or date"
             />
 
-            {/* The header <Text> "My Trip History" is removed from here. */}
-            {/* It's now part of the ScreenHeader in _layout.tsx */}
+            {/* Status filter tabs */}
+            <View style={styles.filterTabs}>
+                {(['all', 'active', 'completed', 'cancelled'] as const).map((status) => (
+                    <TouchableOpacity
+                        key={status}
+                        style={[
+                            styles.filterTab,
+                            statusFilter === status && { backgroundColor: colors.primary + '20', borderColor: colors.primary }
+                        ]}
+                        onPress={() => setStatusFilter(status)}
+                    >
+                        <Text 
+                            style={[
+                                styles.filterTabText,
+                                { color: statusFilter === status ? colors.primary : colors.text + '99' }
+                            ]}
+                        >
+                            {status.charAt(0).toUpperCase() + status.slice(1)}
+                        </Text>
+                    </TouchableOpacity>
+                ))}
+            </View>
 
             <FlatList
                 data={filteredTrips}
@@ -119,14 +155,14 @@ const TripListScreen = () => {
                 keyExtractor={(item) => item.id}
                 contentContainerStyle={filteredTrips.length === 0 ? styles.emptyListContent : styles.listContent}
                 ListEmptyComponent={
-                     !isLoading ? ( // Show empty only if not loading
+                     !isLoading ? (
                         <View style={styles.emptyContainer}>
                             <Icon name="file-tray-outline" size={60} color={colors.text + '88'} />
                             <Text style={[styles.emptyText, { color: colors.text }]}>
                                 No trips match your search.
                             </Text>
                         </View>
-                    ) : null // Don't show empty component while initial loading is happening
+                    ) : null
                 }
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="handled"
@@ -138,81 +174,96 @@ const TripListScreen = () => {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        // paddingTop removed, handled by SafeAreaView in ScreenHeader
-    },
-    searchInput: {
-        marginHorizontal: 16,
-        marginTop: 16, // Space from header
-        marginBottom: 12, // Space before list
-        paddingVertical: Platform.OS === 'ios' ? 14 : 12,
-        paddingHorizontal: 20,
-        borderRadius: 24,
-        fontSize: 16,
-        fontWeight: '500',
-        borderWidth: 1,
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.12,
-        shadowRadius: 6,
-        elevation: 4,
-    },
-    // header style removed
-    itemContainer: {
-        padding: 18,
-        marginHorizontal: 16,
-        marginVertical: 8,
-        borderRadius: 16,
-        borderWidth: 1,
-        shadowOffset: { width: 0, height: 3 },
-        shadowOpacity: 0.12,
-        shadowRadius: 6,
-        elevation: 5,
-    },
-    locationRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: 6,
-    },
-    chevron: {
-        marginHorizontal: 8,
-    },
-    itemTitle: {
-        fontSize: 17, // Slightly increased for better readability
-        fontWeight: '600', // Adjusted weight
-        flexShrink: 1, // Allow text to shrink if needed
-    },
-    itemSubtitle: {
-        fontSize: 14,
-        marginBottom: 6,
-        fontWeight: '500',
-    },
-    itemDetails: {
-        fontSize: 13,
-        fontWeight: '400',
     },
     centered: {
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
     },
-    listContent: {
-        paddingBottom: 16, // Add some padding at the bottom of the list
+    searchInput: {
+        marginHorizontal: 16,
+        marginTop: 16,
+        marginBottom: 12,
+        paddingVertical: Platform.OS === 'ios' ? 14 : 12,
+        paddingHorizontal: 20,
+        borderRadius: 24,
+        fontSize: 16,
+        fontWeight: '500',
+        borderWidth: 1,
     },
-    emptyListContent: { // Style for when the list is empty
-        flexGrow: 1,
+    filterTabs: {
+        flexDirection: 'row',
+        paddingHorizontal: 12,
+        marginBottom: 12,
+    },
+    filterTab: {
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        marginHorizontal: 4,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: 'transparent',
+    },
+    filterTabText: {
+        fontSize: 13,
+        fontWeight: '600',
+    },
+    itemContainer: {
+        marginHorizontal: 16,
+        marginBottom: 12,
+        borderRadius: 12,
+        borderWidth: 1,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 2,
+        flexDirection: 'row',
+        overflow: 'hidden',
+    },
+    statusIndicator: {
+        width: 6,
+        height: '100%',
+    },
+    itemContent: {
+        flex: 1,
+        padding: 16,
+    },
+    locationRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 6,
+    },
+    itemTitle: {
+        fontSize: 15,
+        fontWeight: '600',
+        flex: 1,
+    },
+    itemSubtitle: {
+        fontSize: 14,
+        marginBottom: 4,
+    },
+    itemDetails: {
+        fontSize: 13,
+    },
+    chevron: {
+        marginHorizontal: 8,
+    },
+    emptyContainer: {
+        alignItems: 'center',
         justifyContent: 'center',
-        alignItems: 'center',
-    },
-    emptyContainer: { // Container for icon and text when empty
-        alignItems: 'center',
-        paddingBottom: 50, // Give some space from bottom
+        paddingTop: 60,
     },
     emptyText: {
-        fontSize: 17, // Adjusted size
-        fontWeight: '500',
-        opacity: 0.7,
-        marginTop: 15,
+        fontSize: 16,
+        marginTop: 12,
         textAlign: 'center',
-        paddingHorizontal: 20,
+    },
+    listContent: {
+        paddingTop: 8,
+        paddingBottom: 24,
+    },
+    emptyListContent: {
+        flexGrow: 1,
     },
 });
 
