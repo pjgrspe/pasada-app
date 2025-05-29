@@ -22,6 +22,7 @@ interface LocationPickerModalProps {
   onClose: () => void;
   onLocationConfirm: (coordinate: Coordinate, address: string) => void;
   initialLocation?: Coordinate;
+  initialAddress?: string;
   title: string;
   showCurrentLocationButton?: boolean;
 }
@@ -31,13 +32,14 @@ export default function LocationPickerModal({
   onClose,
   onLocationConfirm,
   initialLocation,
+  initialAddress,
   title,
   showCurrentLocationButton = false,
 }: LocationPickerModalProps) {
   const { colors, isDarkMode } = useTheme();
   const { currentLocation, getSingleLocation, locationPermissionStatus } = useLocationTracking();
   
-  const [selectedLocation, setSelectedLocation] = useState<Coordinate | null>(initialLocation || null);
+  const [selectedLocation, setSelectedLocation] = useState<Coordinate | null>(null);
   const [selectedAddress, setSelectedAddress] = useState<string>('');
   const [isLoadingAddress, setIsLoadingAddress] = useState(false);
   const [mapRegion, setMapRegion] = useState<Region>({
@@ -46,12 +48,36 @@ export default function LocationPickerModal({
     latitudeDelta: 0.02,
     longitudeDelta: 0.01,
   });
-  
+
   const mapRef = useRef<any>(null);
   const slideAnim = useRef(new Animated.Value(visible ? 0 : 1000)).current;
 
+  // Initialize with saved values when modal opens
   useEffect(() => {
     if (visible) {
+      if (initialLocation) {
+        setSelectedLocation(initialLocation);
+        setSelectedAddress(initialAddress || '');
+        
+        const newRegion = {
+          ...initialLocation,
+          latitudeDelta: 0.02,
+          longitudeDelta: 0.01,
+        };
+        setMapRegion(newRegion);
+        
+        // Animate to the saved location
+        setTimeout(() => {
+          if (mapRef.current) {
+            mapRef.current.animateToRegion(newRegion, 1000);
+          }
+        }, 500);
+      } else {
+        // Reset state if no initial location
+        setSelectedLocation(null);
+        setSelectedAddress('');
+      }
+      
       Animated.spring(slideAnim, {
         toValue: 0,
         useNativeDriver: true,
@@ -66,30 +92,119 @@ export default function LocationPickerModal({
         friction: 8,
       }).start();
     }
-  }, [visible]);
+  }, [visible, initialLocation, initialAddress]);
 
-  const reverseGeocode = useCallback(async (coordinate: Coordinate) => {
+  // Function to check if location is within Angeles City proper
+  const isWithinAngelesCityProper = useCallback((coordinate: Coordinate, address: string): boolean => {
+    // Angeles City approximate boundaries
+    const ANGELES_CITY_BOUNDS = {
+      north: 15.1750,  // Northern boundary
+      south: 15.1000,  // Southern boundary
+      east: 120.6500,  // Eastern boundary
+      west: 120.5700,  // Western boundary
+    };
+
+    const { latitude, longitude } = coordinate;
+    
+    // Check coordinate bounds
+    const isWithinBounds = 
+      latitude >= ANGELES_CITY_BOUNDS.south && 
+      latitude <= ANGELES_CITY_BOUNDS.north &&
+      longitude >= ANGELES_CITY_BOUNDS.west && 
+      longitude <= ANGELES_CITY_BOUNDS.east;
+
+    // Check if address contains "Angeles" or "Angeles City"
+    const addressContainsAngeles = address.toLowerCase().includes('angeles');
+
+    return isWithinBounds && addressContainsAngeles;
+  }, []);
+
+  const reverseGeocode = useCallback(async (coordinate: Coordinate, forceUpdate = false) => {
+    // Don't reverse geocode if we already have a specific address unless forced
+    // Also check if the address is not just coordinates
+    const isCoordinateAddress = selectedAddress && 
+      selectedAddress.includes(coordinate.latitude.toFixed(6)) && 
+      selectedAddress.includes(coordinate.longitude.toFixed(6));
+    
+    if (!forceUpdate && selectedAddress && selectedAddress !== '' && !isCoordinateAddress) {
+      return;
+    }
+
     setIsLoadingAddress(true);
     try {
       const result = await mapApiService.reverseGeocode(coordinate);
       if (result) {
-        setSelectedAddress(result.formattedAddress);
+        // Check if location is within Angeles City proper
+        if (!isWithinAngelesCityProper(coordinate, result.formattedAddress)) {
+          Alert.alert(
+            'Location Not Allowed',
+            'Please select a location within Angeles City proper only.',
+            [{ text: 'OK' }]
+          );
+          setSelectedLocation(null);
+          setSelectedAddress('');
+          setIsLoadingAddress(false);
+          return;
+        }
+        // Only update address if we don't have a proper address or if forced update
+        if (!selectedAddress || isCoordinateAddress || forceUpdate) {
+          setSelectedAddress(result.formattedAddress);
+        }
       } else {
-        setSelectedAddress(`${coordinate.latitude.toFixed(6)}, ${coordinate.longitude.toFixed(6)}`);
+        // If no address found, still check coordinates
+        if (!isWithinAngelesCityProper(coordinate, '')) {
+          Alert.alert(
+            'Location Not Allowed',
+            'Please select a location within Angeles City proper only.',
+            [{ text: 'OK' }]
+          );
+          setSelectedLocation(null);
+          setSelectedAddress('');
+          setIsLoadingAddress(false);
+          return;
+        }
+        if (!selectedAddress || forceUpdate) {
+          setSelectedAddress(`${coordinate.latitude.toFixed(6)}, ${coordinate.longitude.toFixed(6)}`);
+        }
       }
     } catch (error) {
       console.warn('Reverse geocoding failed:', error);
-      setSelectedAddress(`${coordinate.latitude.toFixed(6)}, ${coordinate.longitude.toFixed(6)}`);
+      // Still check bounds even if geocoding fails
+      if (!isWithinAngelesCityProper(coordinate, '')) {
+        Alert.alert(
+          'Location Not Allowed',
+          'Please select a location within Angeles City proper only.',
+          [{ text: 'OK' }]
+        );
+        setSelectedLocation(null);
+        setSelectedAddress('');
+        setIsLoadingAddress(false);
+        return;
+      }
+      if (!selectedAddress || forceUpdate) {
+        setSelectedAddress(`${coordinate.latitude.toFixed(6)}, ${coordinate.longitude.toFixed(6)}`);
+      }
     } finally {
       setIsLoadingAddress(false);
     }
-  }, []);
+  }, [isWithinAngelesCityProper, selectedAddress]);
 
   const handleMapPress = useCallback((event: any) => {
     const coordinate = event.nativeEvent.coordinate;
     setSelectedLocation(coordinate);
-    reverseGeocode(coordinate);
-  }, [reverseGeocode]);
+    
+    // Only reverse geocode if this is a new location (significant coordinate change)
+    // or if we don't have any address yet
+    const hasSignificantLocationChange = !selectedLocation || 
+      Math.abs(selectedLocation.latitude - coordinate.latitude) > 0.0001 ||
+      Math.abs(selectedLocation.longitude - coordinate.longitude) > 0.0001;
+    
+    const hasNoAddress = !selectedAddress || selectedAddress === '';
+    
+    if (hasSignificantLocationChange || hasNoAddress) {
+      reverseGeocode(coordinate, hasSignificantLocationChange);
+    }
+  }, [reverseGeocode, selectedLocation, selectedAddress]);
 
   const handleCurrentLocation = useCallback(async () => {
     if (locationPermissionStatus !== 'granted') {
@@ -109,19 +224,36 @@ export default function LocationPickerModal({
           longitude: location.coords.longitude,
         };
         
-        setSelectedLocation(coordinate);
-        
-        // Perform reverse geocoding to get the actual address
+        // Check if current location is within Angeles City proper
         setIsLoadingAddress(true);
         try {
           const result = await mapApiService.reverseGeocode(coordinate);
-          if (result) {
-            setSelectedAddress(result.formattedAddress);
-          } else {
-            setSelectedAddress(`${coordinate.latitude.toFixed(6)}, ${coordinate.longitude.toFixed(6)}`);
+          const address = result?.formattedAddress || '';
+          
+          if (!isWithinAngelesCityProper(coordinate, address)) {
+            Alert.alert(
+              'Location Not Allowed',
+              'Your current location is outside Angeles City proper. Please select a location within the city limits.',
+              [{ text: 'OK' }]
+            );
+            setIsLoadingAddress(false);
+            return;
           }
+          
+          setSelectedLocation(coordinate);
+          setSelectedAddress(address || `${coordinate.latitude.toFixed(6)}, ${coordinate.longitude.toFixed(6)}`);
         } catch (error) {
           console.warn('Reverse geocoding failed:', error);
+          if (!isWithinAngelesCityProper(coordinate, '')) {
+            Alert.alert(
+              'Location Not Allowed',
+              'Your current location is outside Angeles City proper. Please select a location within the city limits.',
+              [{ text: 'OK' }]
+            );
+            setIsLoadingAddress(false);
+            return;
+          }
+          setSelectedLocation(coordinate);
           setSelectedAddress(`${coordinate.latitude.toFixed(6)}, ${coordinate.longitude.toFixed(6)}`);
         } finally {
           setIsLoadingAddress(false);
@@ -141,7 +273,7 @@ export default function LocationPickerModal({
     } catch (error) {
       Alert.alert('Error', 'Failed to get current location. Please try again.');
     }
-  }, [locationPermissionStatus, getSingleLocation]);
+  }, [locationPermissionStatus, getSingleLocation, isWithinAngelesCityProper]);
 
   const handleConfirm = useCallback(() => {
     if (selectedLocation && selectedAddress) {
