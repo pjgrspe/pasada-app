@@ -3,13 +3,14 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   StyleSheet,
-  TouchableOpacity, // ScrollView removed from here
+  TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
   Alert,
   Button as RNButton,
-  FlatList, // FlatList is now the main scroller
-  ScrollView as HorizontalScrollView, // For tabs
+  FlatList,
+  ScrollView as HorizontalScrollView,
+  ActivityIndicator, // Make sure this is imported
 } from 'react-native';
 import { Marker, Region } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,6 +20,7 @@ import RouteCard from '@/components/RouteCard';
 import Loader from '@/components/Loader';
 // TripOptionsDisplayComponent is no longer imported as a whole
 import InstructionLegItem from '@/modules/map/components/InstructionLegItem'; // NEW IMPORT
+import LoadingStatusDisplay from '@/modules/map/components/LoadingStatusDisplay';
 
 import MapViewComponent from '@/modules/map/components/MapViewComponent';
 import MapPin from '@/modules/map/components/MapPin';
@@ -90,6 +92,8 @@ export default function DashboardScreen() {
         routes: mapDisplayRoutes,
         currentRegion: storeMapRegion,
         setCurrentRegion: setStoreCurrentRegion,
+        isLoading: mapIsLoading,
+        loadingStatus, // Add this
     } = useMapStore();
 
 
@@ -285,8 +289,14 @@ export default function DashboardScreen() {
     const listSections: Array<{type: string, key: string, data?: any}> = [
         { type: 'planning_inputs', key: 'planning_inputs' },
         { type: 'test_button', key: 'test_button' },
-        { type: 'map_view', key: 'map_view' },
     ];
+
+    // Add loading status section if there's loading or status
+    if (isFetchingRoute || loadingStatus) {
+        listSections.push({ type: 'loading_status', key: 'loading_status' });
+    }
+
+    listSections.push({ type: 'map_view', key: 'map_view' });
 
     if (allTripOptions && allTripOptions.length > 0) {
         listSections.push({ 
@@ -302,7 +312,6 @@ export default function DashboardScreen() {
     }
     
     listSections.push({ type: 'recent_trips', key: 'recent_trips', data: recentTrips });
-
 
     const renderListSection = ({ item }: { item: {type: string, key: string, data?: any} }) => {
         switch (item.type) {
@@ -336,17 +345,34 @@ export default function DashboardScreen() {
                             iconName="location-outline"
                             style={dynamicStyles.inputContainer}
                         />
+                        
                         <View style={styles.optionsRow}>
-                            <TouchableOpacity style={[styles.actionButton, {backgroundColor: colors.primary}]} onPress={handlePlanTripFromInputs}>
-                                 <Ionicons name="paper-plane-outline" size={18} color={colors.headerText} />
-                                 <Text style={[styles.actionButtonText, {color: colors.headerText}]}>Find Route</Text>
-                             </TouchableOpacity>
-                             <TouchableOpacity style={[styles.actionButton, {backgroundColor: colors.secondary}]} onPress={handleClearAll}>
-                                 <Ionicons name="close-circle-outline" size={18} color={colors.headerText} />
-                                 <Text style={[styles.actionButtonText, {color: colors.headerText}]}>Clear</Text>
-                             </TouchableOpacity>
+                            <TouchableOpacity 
+                                style={[styles.actionButton, {backgroundColor: colors.primary}]} 
+                                onPress={handlePlanTripFromInputs}
+                                disabled={isFetchingRoute}
+                            >
+                                <Ionicons name="paper-plane-outline" size={18} color={colors.headerText} />
+                                <Text style={[styles.actionButtonText, {color: colors.headerText}]}>Find Route</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity 
+                                style={[styles.actionButton, {backgroundColor: colors.secondary}]} 
+                                onPress={handleClearAll}
+                                disabled={isFetchingRoute}
+                            >
+                                <Ionicons name="close-circle-outline" size={18} color={colors.headerText} />
+                                <Text style={[styles.actionButtonText, {color: colors.headerText}]}>Clear</Text>
+                            </TouchableOpacity>
                         </View>
                     </View>
+                );
+            case 'loading_status':
+                return (
+                    <LoadingStatusDisplay
+                        isLoading={isFetchingRoute}
+                        status={loadingStatus}
+                        defaultMessage="Planning your route..."
+                    />
                 );
             case 'map_view':
                 return (
@@ -490,7 +516,7 @@ export default function DashboardScreen() {
     );
 }
 
-// Styles for sections rendered by the FlatList
+// Remove these from styles since they're now in the component
 const styles = StyleSheet.create({
     // scrollContent removed as FlatList handles its own content container
     planningContainer: { /* Base styles, theming in dynamicStyles */ },
@@ -592,5 +618,5 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         zIndex: 1000,
         borderRadius: 15,
-    }
+    },
 });

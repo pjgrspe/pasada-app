@@ -14,12 +14,13 @@ export const useRouting = () => {
     clearRoutes,
     setMapLoading,
     setMapError,
+    setLoadingStatus, // Add this
     setStartPoint,
     setDestinationPoint,
     setCurrentRegion,
     clearRoutePoints,
-    addMarker, // To add terminal markers
-    clearAdditionalMarkers, // To clear old terminal/custom markers
+    addMarker,
+    clearAdditionalMarkers,
   } = useMapStore();
 
   const [isFetchingRoute, setIsFetchingRoute] = useState(false);
@@ -99,37 +100,53 @@ export const useRouting = () => {
     setIsFetchingRoute(true);
     setMapLoading(true);
     setMapError(null);
+    setLoadingStatus('🚀 Initializing route planning system...');
 
     // --- Clearing sequence ---
-    // 1. Clear additional markers (like old terminals)
     clearAdditionalMarkers();
-    // 2. Clear old route points (start/dest markers from store.markers) and all drawn routes
     clearRoutePoints();
-    // 3. Clear local state for trip options
     setAllTripOptions(null);
     setCurrentDisplayedTrip(null);
     setSelectedTripIndex(0);
     // --- End Clearing ---
 
+    setLoadingStatus('📍 Setting your start and destination points...');
 
     setStartPoint({ id: 'startPoint', coordinate: start, title: startMarkerTitle, pinColor: colors.success });
     setDestinationPoint({ id: 'destinationPoint', coordinate: end, title: endMarkerTitle, pinColor: colors.error });
 
     try {
+      setLoadingStatus('🔄 Connecting to route planning services...');
+      
       const tripOptionsFromService = await planTrip(start, end);
 
       if (tripOptionsFromService && tripOptionsFromService.length > 0 && tripOptionsFromService[0].length > 0) {
+        setLoadingStatus('🗺️ Preparing route visualization...');
+        
         setAllTripOptions(tripOptionsFromService);
         displayTripOnMap(tripOptionsFromService[0]);
         setSelectedTripIndex(0);
+        
+        const routeCount = tripOptionsFromService.length;
+        const jeepneyCount = tripOptionsFromService[0].filter(leg => leg.type === 'jeepney').length;
+        const walkTime = tripOptionsFromService[0]
+          .filter(leg => leg.type === 'walk')
+          .reduce((sum, leg) => sum + (typeof leg.duration === 'number' ? leg.duration : 0), 0);
+        
+        setLoadingStatus(`🎉 Found ${routeCount} route option${routeCount > 1 ? 's' : ''} with ${jeepneyCount} jeepney${jeepneyCount !== 1 ? 's' : ''} and ${Math.round(walkTime / 60)} minutes of walking`);
+        
+        // Clear status after a brief moment to show success
+        setTimeout(() => setLoadingStatus(null), 3000);
       } else {
-        setMapError("No suitable routes found. Try adjusting start/end points or walking further.");
+        setMapError("🚫 No suitable routes found. Try adjusting your start/end points or consider walking further to reach jeepney routes.");
         displayTripOnMap(null);
+        setLoadingStatus(null);
       }
     } catch (error: any) {
       console.error("Error in planAndDisplayTrip:", error);
-      setMapError(error.message || 'Failed to plan trip. Please try again.');
+      setMapError(`❌ Route planning failed: ${error.message || 'Please check your connection and try again.'}`);
       displayTripOnMap(null);
+      setLoadingStatus(null);
     } finally {
       setIsFetchingRoute(false);
       setMapLoading(false);
@@ -139,7 +156,8 @@ export const useRouting = () => {
       colors.error,
       setMapLoading,
       setMapError,
-      clearAdditionalMarkers, // Added
+      setLoadingStatus,
+      clearAdditionalMarkers,
       clearRoutePoints,
       setStartPoint,
       setDestinationPoint,

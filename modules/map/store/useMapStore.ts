@@ -24,17 +24,18 @@ export interface Route {
 // Defines the structure of the map state
 interface MapState {
   currentRegion: Region | undefined;
-  markers: MapMarker[]; // All general markers (includes start, destination, and any additional waypoints)
-  startPoint: MapMarker | null; // Specific marker for the start of a planned route
-  destinationPoint: MapMarker | null; // Specific marker for the end of a planned route
-  routes: Route[]; // Array of polylines to display for the current trip option
+  markers: MapMarker[];
+  startPoint: MapMarker | null;
+  destinationPoint: MapMarker | null;
+  routes: Route[];
   selectedRouteId: string | null;
   isLoading: boolean;
   error: string | null;
+  loadingStatus: string | null; // Add this new field
 
   // Actions
   setCurrentRegion: (region: Region) => void;
-
+  
   // General marker management
   setMarkers: (markers: MapMarker[]) => void; // Replaces all markers
   addMarker: (marker: MapMarker) => void; // Adds a marker, avoiding ID duplicates
@@ -54,6 +55,7 @@ interface MapState {
 
   setMapLoading: (loading: boolean) => void;
   setMapError: (error: string | null) => void;
+  setLoadingStatus: (status: string | null) => void; // Add this new action
 }
 
 export const useMapStore = create<MapState>((set, get) => ({
@@ -66,6 +68,7 @@ export const useMapStore = create<MapState>((set, get) => ({
   selectedRouteId: null,
   isLoading: false,
   error: null,
+  loadingStatus: null, // Add this
 
   setCurrentRegion: (region) => set({ currentRegion: region }),
 
@@ -135,4 +138,5 @@ export const useMapStore = create<MapState>((set, get) => ({
 
   setMapLoading: (loading) => set({ isLoading: loading }),
   setMapError: (error) => set({ error: error }),
+  setLoadingStatus: (status) => set({ loadingStatus: status }), // Add this
 }));

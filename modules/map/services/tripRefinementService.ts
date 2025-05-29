@@ -1,8 +1,6 @@
 // pasada-gemini/modules/map/services/tripRefinementService.ts
 import { Coordinate, PlannedTripLeg } from '../utils/routeTypes'; // Adjusted path
-// Removed direct use of constants here, as they are used by imported strategies
-// Removed direct use of mapApiServices, jeepneyDataService, mapHelpers, tripUtils as they are used by imported strategies
-
+import { useMapStore } from '../store/useMapStore'; // Adjusted path
 // Import the individual refinement strategies
 import {
     refineOverlappingWalkAfterJeep,
@@ -14,21 +12,24 @@ import {
 /**
  * Main orchestrator for refining trip legs.
  * Applies a series of refinement strategies to optimize the planned trip.
- * @param legs The initial array of planned trip legs.
- * @param finalDestination The ultimate destination coordinate of the trip.
- * @returns A promise that resolves to an array of refined planned trip legs.
  */
 export async function postProcessTripLegs(
     legs: PlannedTripLeg[],
     finalDestination: Coordinate
 ): Promise<PlannedTripLeg[]> {
+    const { setLoadingStatus } = useMapStore.getState();
+    
     if (legs.length === 0) return legs;
+
+    setLoadingStatus('🔧 Starting route optimization process...');
 
     // Create a deep copy of the legs to mutate, ensuring the original array is not modified.
     let refinedLegs: PlannedTripLeg[] = JSON.parse(JSON.stringify(legs));
 
     const MAX_REFINEMENT_ITERATIONS = 3; // Limit iterations to prevent infinite loops and control processing time.
     for (let iter = 0; iter < MAX_REFINEMENT_ITERATIONS; iter++) {
+        setLoadingStatus(`🔄 Optimization pass ${iter + 1}/3 - Analyzing ${refinedLegs.length} route segments...`);
+        
         let legsChangedInIteration = false;
         // Work on a copy for the current iteration to correctly manage changes.
         const currentIterationLegs: PlannedTripLeg[] = JSON.parse(JSON.stringify(refinedLegs));
@@ -39,6 +40,8 @@ export async function postProcessTripLegs(
             // Strategy 1: Refine overlapping walk after a jeepney leg
             if (currentLeg.type === 'walk' && i > 0 && currentIterationLegs[i - 1]?.type === 'jeepney') {
                 const prevJeepLeg = currentIterationLegs[i - 1];
+                setLoadingStatus(`⚡ Optimizing walk segment after ${prevJeepLeg.routeName || 'jeepney'}...`);
+                
                 const { updatedPrevJeepLeg, updatedWalkLeg } = await refineOverlappingWalkAfterJeep(
                     prevJeepLeg,
                     currentLeg
@@ -59,6 +62,8 @@ export async function postProcessTripLegs(
                 if (i === 0 && currentIterationLegs.length > 1 && currentIterationLegs[i+1]?.type === 'jeepney') {
                     // Initial Walk
                     const nextJeepLeg = currentIterationLegs[i+1];
+                    setLoadingStatus(`🚶 Optimizing initial walk to ${nextJeepLeg.routeName || 'jeepney'}...`);
+                    
                     const { refinedWalkLeg, updatedNextJeepLeg } = await refineInitialWalk(legToRefine, nextJeepLeg);
                     if (refinedWalkLeg.distance !== legToRefine.distance || updatedNextJeepLeg.distance !== nextJeepLeg.distance) {
                         currentIterationLegs[i] = refinedWalkLeg;
@@ -68,6 +73,8 @@ export async function postProcessTripLegs(
                 } else if (i === currentIterationLegs.length - 1 && i > 0 && currentIterationLegs[i-1]?.type === 'jeepney') {
                     // Final Walk
                     const prevJeepLeg = currentIterationLegs[i-1];
+                    setLoadingStatus(`🎯 Optimizing final walk from ${prevJeepLeg.routeName || 'jeepney'}...`);
+                    
                     const { updatedPrevJeepLeg, refinedWalkLeg } = await refineFinalWalk(prevJeepLeg, legToRefine, finalDestination);
                     if (updatedPrevJeepLeg.distance !== prevJeepLeg.distance || refinedWalkLeg.distance !== legToRefine.distance) {
                         currentIterationLegs[i-1] = updatedPrevJeepLeg;
@@ -78,6 +85,8 @@ export async function postProcessTripLegs(
                     // Transfer Walk
                     const prevJeepLeg = currentIterationLegs[i-1];
                     const nextJeepLeg = currentIterationLegs[i+1];
+                    setLoadingStatus(`🔄 Optimizing transfer from ${prevJeepLeg.routeName || 'jeepney'} to ${nextJeepLeg.routeName || 'jeepney'}...`);
+                    
                     const { updatedPrevJeepLeg, refinedWalkLeg, updatedNextJeepLeg } = await refineTransferWalk(prevJeepLeg, legToRefine, nextJeepLeg);
                      if (updatedPrevJeepLeg.distance !== prevJeepLeg.distance || refinedWalkLeg.distance !== legToRefine.distance || updatedNextJeepLeg.distance !== nextJeepLeg.distance) {
                         currentIterationLegs[i-1] = updatedPrevJeepLeg;
@@ -93,11 +102,14 @@ export async function postProcessTripLegs(
 
         if (!legsChangedInIteration) {
             // If no legs were changed in this iteration, further iterations are unlikely to yield more refinements.
-            // console.log(`[PostProcessTripLegs] No changes in iteration ${iter + 1}. Finishing refinement.`);
+            setLoadingStatus('✅ Route optimization complete - No further improvements possible');
             break;
+        } else {
+            setLoadingStatus(`💡 Pass ${iter + 1} improved route efficiency`);
         }
-        // console.log(`[PostProcessTripLegs] Completed iteration ${iter + 1}. Legs changed: ${legsChangedInIteration}`);
     }
+
+    setLoadingStatus('📋 Finalizing optimized route segments...');
 
     // Final filtering of legs that might have become too short or invalid after refinement.
     const finalFilteredLegs = refinedLegs.filter(leg =>
@@ -109,6 +121,5 @@ export async function postProcessTripLegs(
         )
     );
 
-    // console.log(`[PostProcessTripLegs] Final refined legs count: ${finalFilteredLegs.length}`);
     return finalFilteredLegs;
 }
