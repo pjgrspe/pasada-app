@@ -23,6 +23,8 @@ export const lightThemeColors = {
   border: '#E2E8F0',     // Soft, neutral grey - subtle division
   error: '#D62828',       // A strong, clear red
   success: '#28A745',     // Lush, hopeful green - nature's bounty
+  info: '#007BFF',        // A neutral, informative blue (Bootstrap's info blue)
+
   inputBackground: '#FFFFFF',
   inputText: '#1D2A38',
   tabBar: '#FFFFFF',
@@ -52,6 +54,7 @@ export const darkThemeColors = {
   border: '#2D3748',     // Dark Grey - Subtle division
   error: '#E53E3E',       // Visible, but not overly bright red
   success: '#38A169',     // Deep but visible green
+  info: '#17A2B8',        // A teal/cyan for info in dark mode (Bootstrap's dark info)
   inputBackground: '#1C2541', // Matches card
   inputText: '#E2E8F0',       // Matches text
   tabBar: '#0B132B',       // Matches background

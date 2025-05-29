@@ -1,4 +1,6 @@
 // pasada-gemini/modules/map/services/mapApiServices.ts
+// Added extensive logging to getDrivingDirections.
+
 import { gMapsApiKey } from '@/APIkeys';
 import { regionFromCoordinates as mapRegionFromCoordinates } from '../utils/mapHelpers';
 import { Coordinate, GoogleDirectionsResponse, PlannedTripLeg, JeepneyRoute } from '../utils/routeTypes';
@@ -21,6 +23,7 @@ export function decodeGooglePolyline(encoded: string): Coordinate[] {
 }
 
 export function calculateDistance(coord1: Coordinate, coord2: Coordinate): number {
+  if (!coord1 || !coord2) return 0;
   const dLat = (coord2.latitude - coord1.latitude) * Math.PI / 180;
   const dLon = (coord2.longitude - coord1.longitude) * Math.PI / 180;
   const lat1 = coord1.latitude * Math.PI / 180;
@@ -39,29 +42,19 @@ export function findNearestPointOnRoute(
     let closestPointOnPolyline: Coordinate | null = null;
 
     if (!route.coordinates || route.coordinates.length === 0) {
-        console.warn(`Route ${route.id} has no coordinates.`);
-        return {
-            accessPoint: point,
-            segmentIndex: -1,
-            distanceToPoint: Infinity,
-            pointOnPolyline: point,
-        };
+        return { accessPoint: point, segmentIndex: -1, distanceToPoint: Infinity, pointOnPolyline: point };
     }
     if (route.coordinates.length === 1) {
         const dist = calculateDistance(point, route.coordinates[0]);
-        return {
-            accessPoint: route.coordinates[0],
-            segmentIndex: 0,
-            distanceToPoint: dist,
-            pointOnPolyline: route.coordinates[0],
-        };
+        return { accessPoint: route.coordinates[0], segmentIndex: 0, distanceToPoint: dist, pointOnPolyline: route.coordinates[0] };
     }
-
     closestPointOnPolyline = route.coordinates[0];
 
     for (let i = 0; i < route.coordinates.length - 1; i++) {
       const p1 = route.coordinates[i];
       const p2 = route.coordinates[i + 1];
+      if(!p1 || !p2) continue;
+
       const l2 = (p2.latitude - p1.latitude)**2 + (p2.longitude - p1.longitude)**2;
       if (l2 === 0) {
         const dist = calculateDistance(point, p1);
@@ -86,12 +79,15 @@ export function findNearestPointOnRoute(
       }
     }
     const lastPoint = route.coordinates[route.coordinates.length - 1];
-    const distToLast = calculateDistance(point, lastPoint);
-    if (distToLast < minDistance) {
-        minDistance = distToLast;
-        closestPointOnPolyline = lastPoint;
-        bestSegmentIndex = route.coordinates.length - 2 >= 0 ? route.coordinates.length - 2 : 0;
+    if (lastPoint) {
+        const distToLast = calculateDistance(point, lastPoint);
+        if (distToLast < minDistance) {
+            minDistance = distToLast;
+            closestPointOnPolyline = lastPoint;
+            bestSegmentIndex = route.coordinates.length - 2 >= 0 ? route.coordinates.length - 2 : 0;
+        }
     }
+
     return {
       accessPoint: closestPointOnPolyline!,
       segmentIndex: bestSegmentIndex,
@@ -119,52 +115,155 @@ export async function getWalkingDirections(start: Coordinate, end: Coordinate): 
       const routeItem = data.routes[0];
       const leg = routeItem.legs[0];
       const coordinates = decodeGooglePolyline(routeItem.overview_polyline.points);
-      const instructions = leg.steps.map(step => step.html_instructions.replace(/<[^>]*>/g, '')).join('; ');
+      const instructions = leg.steps
+        .map(step => step.html_instructions.replace(/<wbr\/>/g, ' ').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim())
+        .filter(instr => instr.length > 0)
+        .join('. ');
       return {
         type: 'walk',
         coordinates,
         distance: leg.distance.value,
         duration: leg.duration.value,
-        instructions: instructions,
+        instructions: instructions || "Walk to destination",
         startAddress: leg.start_address,
         endAddress: leg.end_address,
         mode: 'walking',
       };
     } else {
-      const errorMessage = data?.error_message || 'Unknown API error';
-      console.warn(`Walking directions API error: ${data?.status || 'Unknown status'} - ${errorMessage}`);
+      console.warn(`[mapApiServices] Walking directions API error: ${data?.status || 'Unknown status'} - ${data?.error_message || 'Unknown API error'}`);
       return null;
     }
   } catch (error) {
-    console.error("Error fetching walking directions:", error);
+    console.error("[mapApiServices] Error fetching walking directions:", error);
     return null;
   }
 }
 
-export async function geocode(address: string): Promise<{ coordinate: Coordinate; formattedAddress: string; } | null> {
-    console.warn(`mapApiService.geocode is using mock data for: ${address}`);
-    await new Promise(resolve => setTimeout(resolve, 300));
-    if (address.toLowerCase().includes("manila")) {
-        return { coordinate: { latitude: 14.5995, longitude: 120.9842 }, formattedAddress: "Manila, Metro Manila, Philippines" };
-    } // ... other mock geocode cases
-    console.warn(`No mock geocode found for: ${address}`);
+export async function getDrivingDirections(start: Coordinate, end: Coordinate): Promise<PlannedTripLeg[] | null> {
+  console.log("[mapApiServices] getDrivingDirections: Called with", {start, end});
+  if (!start || !end) {
+    console.warn("[mapApiServices] getDrivingDirections: Start or end coordinate is missing.");
     return null;
+  }
+  try {
+    const apiKey = gMapsApiKey;
+    if (!apiKey) {
+      console.error("[mapApiServices] FATAL: Google Maps API Key is not configured.");
+      return null;
+    }
+    const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${start.latitude},${start.longitude}&destination=${end.latitude},${end.longitude}&mode=driving&alternatives=true&region=ph&key=${apiKey}`;
+    console.log("[mapApiServices] getDrivingDirections: Fetching URL:", url);
+
+    const response = await fetch(url);
+    const data: GoogleDirectionsResponse = await response.json();
+    console.log("[mapApiServices] getDrivingDirections: Raw API Response Status:", data.status);
+    // console.log("[mapApiServices] getDrivingDirections: Raw API Data:", JSON.stringify(data, null, 2));
+
+
+    if (data && data.status === 'OK' && data.routes && data.routes.length > 0) {
+      console.log(`[mapApiServices] getDrivingDirections: Found ${data.routes.length} driving routes.`);
+      const drivingRouteGuides: PlannedTripLeg[] = data.routes.map((routeItem, index) => {
+        const leg = routeItem.legs[0];
+        const coordinates = decodeGooglePolyline(routeItem.overview_polyline.points);
+        console.log(`[mapApiServices] getDrivingDirections: Processed driving alternative ${index + 1}, polyline length: ${coordinates.length}, summary: ${routeItem.summary || 'N/A'}`);
+        return {
+          type: 'walk', // Placeholder type for the guide polyline
+          coordinates,
+          distance: leg.distance.value,
+          duration: leg.duration.value,
+          instructions: `Driving Guide Option ${index + 1} (${routeItem.summary || ''})`,
+          mode: 'driving_guide',
+        };
+      });
+      return drivingRouteGuides;
+    } else {
+      console.warn(`[mapApiServices] Driving directions API error: ${data?.status || 'Unknown status'} - ${data?.error_message || 'No routes found'}`);
+      if (data && data.routes && data.routes.length === 0) {
+        console.log("[mapApiServices] getDrivingDirections: API status OK but no routes array or empty routes array.");
+      }
+      return null;
+    }
+  } catch (error) {
+    console.error("[mapApiServices] Error fetching driving directions:", error);
+    return null;
+  }
 }
 
-// This object now only exports functions defined within this file or general utilities.
+
+export async function geocode(address: string): Promise<{ coordinate: Coordinate; formattedAddress: string; } | null> {
+    const apiKey = gMapsApiKey;
+    if (!apiKey) {
+      console.error("[mapApiServices] FATAL: Google Maps API Key is not configured for geocoding.");
+      return null;
+    }
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}&components=country:PH&region=ph`;
+    // console.log(`[mapApiServices] Geocoding URL: ${url}`);
+    try {
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (data.status === 'OK' && data.results && data.results.length > 0) {
+            const location = data.results[0].geometry.location;
+            const formattedAddress = data.results[0].formatted_address;
+            // console.log(`[mapApiServices] Geocoded "${address}" to: ${formattedAddress}`, location);
+            return {
+                coordinate: { latitude: location.lat, longitude: location.lng },
+                formattedAddress: formattedAddress,
+            };
+        } else {
+            console.warn(`[mapApiServices] Geocoding API error for "${address}": ${data.status} - ${data.error_message || 'No results'}`);
+            if (address.toLowerCase().includes("nepo mall") || address.toLowerCase().includes("sample start") || address.toLowerCase().includes("diamond subd")) {
+                return { coordinate: { latitude: 15.160257, longitude: 120.594434 }, formattedAddress: "Nepo Mall, Angeles City (Mock Fallback)" };
+            }
+            if (address.toLowerCase().includes("auf") || address.toLowerCase().includes("sample end")) {
+                return { coordinate: { latitude: 15.145830, longitude: 120.594995 }, formattedAddress: "Angeles University Foundation, AC (Mock Fallback)" };
+            }
+            if (address.toLowerCase().includes("friendship")) {
+                 return { coordinate: { latitude: 15.169, longitude: 120.53 }, formattedAddress: "Friendship Highway Area (Mock Fallback)" };
+            }
+            return null;
+        }
+    } catch (error) {
+        console.error(`[mapApiServices] Error during geocoding for "${address}":`, error);
+        return null;
+    }
+}
+
+export async function reverseGeocode(coordinate: Coordinate): Promise<{ formattedAddress: string } | null> {
+  try {
+    const apiKey = gMapsApiKey;
+    if (!apiKey) {
+      console.error("FATAL: Google Maps API Key is not configured in APIkeys.ts or is empty.");
+      return null;
+    }
+
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${coordinate.latitude},${coordinate.longitude}&key=${apiKey}`;
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (data && data.status === 'OK' && data.results && data.results.length > 0) {
+      return {
+        formattedAddress: data.results[0].formatted_address,
+      };
+    } else {
+      console.warn(`[mapApiServices] Reverse geocoding failed: ${data?.status || 'Unknown status'}`);
+      return null;
+    }
+  } catch (error) {
+    console.error("[mapApiServices] Error in reverse geocoding:", error);
+    return null;
+  }
+}
+
 const mapApiService = {
   geocode,
   decodeGooglePolyline,
   calculateDistance,
   getWalkingDirections,
+  getDrivingDirections,
   findNearestPointOnRoute,
   regionFromCoordinates: mapRegionFromCoordinates,
-  // REMOVED: planTrip: planJeepneyTrip,
-  // The old mock getDirections can also be removed if no longer needed.
-  getDirections: async (start: Coordinate, end: Coordinate): Promise<any | null> => {
-    console.warn("mapApiService.getDirections is a mock and likely deprecated. Use functions from tripPlannerService for actual routing.");
-    return null;
-  },
+  reverseGeocode,
 };
 
 export default mapApiService;

@@ -1,272 +1,270 @@
 // pasada-gemini/modules/map/services/tripPlannerServices.ts
-import { allJeepneyRoutes } from './jeepneyDataService';
-import { Coordinate, JeepneyRoute, PlannedTripLeg } from '../utils/routeTypes';
-import { getWalkingDirections, calculateDistance, findNearestPointOnRoute } from './mapApiServices';
+import {
+  Coordinate,
+  PlannedTripLeg,
+  // JeepneyRoute, // Not directly used here
+} from '../utils/routeTypes';
+import {
+  getWalkingDirections,
+  getDrivingDirections,
+  calculateDistance,
+} from './mapApiServices';
+import { calculateDistanceOfPolyline } from '../utils/mapHelpers';
+import { AlignedJeepInfo, findBestAlignedJeepney } from './jeepneyAlignmentService';
+import { postProcessTripLegs } from './tripRefinementService';
+import { trimJeepLeg } from '../utils/tripUtils';
+import {
+    MAX_WALK_TO_JEEP_METERS,
+    MAX_FINAL_WALK_METERS,
+    MIN_JEEP_RIDE_PROGRESS_METERS,
+    MAX_TRIP_LEGS,
+    MAX_TRIP_OPTIONS_TO_RETURN // This will now be primarily enforced by the evaluator
+} from '../constants/tripPlanningConstants';
+import { evaluateAndFilterTripOptions, EvaluatedTripResults } from './tripOptionEvaluator'; // NEW IMPORT
+import { useMapStore } from '../store/useMapStore';
 
-// --- Constants ---
-const MAX_WALK_DISTANCE_TO_JEEP = 700; // meters
-const MAX_WALK_DISTANCE_FOR_TRANSFER = 400; // meters
-const PREFERRED_MAX_WALK_ONLY_DISTANCE = 1500; // meters, for prioritizing direct walk
-const MAX_TRANSFER_ITERATIONS_DEBUG = 50;
-const TRIVIAL_TRANSFER_WALK_THRESHOLD = 75;
+export async function planTrip(
+  origin: Coordinate,
+  destination: Coordinate
+): Promise<PlannedTripLeg[][]> {
+  const { setLoadingStatus } = useMapStore.getState();
+  
+  setLoadingStatus('🗺️ Getting driving directions from Google Maps...');
+  
+  const drivingGuides = await getDrivingDirections(origin, destination);
+  if (!drivingGuides || drivingGuides.length === 0) {
+    setLoadingStatus('⚠️ No driving routes available, creating direct walking route...');
+    const directWalk = await getWalkingDirections(origin, destination);
+    return directWalk ? [[directWalk]] : [];
+  }
 
+  setLoadingStatus(`🚌 Found ${drivingGuides.length} possible route${drivingGuides.length > 1 ? 's' : ''}, searching for jeepney connections...`);
+  
+  const allProcessedTripOptions: PlannedTripLeg[][] = [];
 
-function getJeepneyRidePath(
-    route: JeepneyRoute,
-    projectedBoardingPoint: Coordinate,
-    projectedAlightingPoint: Coordinate,
-    boardingSegIdx: number,
-    alightingSegIdx: number
-  ): Coordinate[] {
-    // console.log(`getJeepneyRidePath for ${route.id}: boardSeg ${boardingSegIdx}, alightSeg ${alightingSegIdx}`);
-    if (boardingSegIdx === -1 || alightingSegIdx === -1 || boardingSegIdx > alightingSegIdx) {
-        // console.log(` -> Invalid segment indices or order.`);
-        return [];
-    }
-
-    const path: Coordinate[] = [projectedBoardingPoint];
-    for (let i = boardingSegIdx + 1; i <= alightingSegIdx; i++) {
-        if (route.coordinates[i]) {
-            path.push(route.coordinates[i]);
-        } else {
-            // console.log(` -> Missing coordinate at index ${i} for route ${route.id}`);
-        }
-    }
-    const lastPathPoint = path[path.length - 1];
-    if (!lastPathPoint || calculateDistance(lastPathPoint, projectedAlightingPoint) > 1) {
-        path.push(projectedAlightingPoint);
+  for (let i = 0; i < drivingGuides.length; i++) {
+    const drivingGuide = drivingGuides[i];
+    
+    setLoadingStatus(`🔍 Analyzing route ${i + 1} of ${drivingGuides.length} - Finding optimal jeepney segments...`);
+    
+    if (!drivingGuide.coordinates || drivingGuide.coordinates.length === 0) {
+      continue;
     }
     
-    const cleanedPath = path.filter((point, index, self) =>
-        index === 0 || calculateDistance(point, self[index - 1]) > 0.1
-    );
-    
-    // console.log(` -> Generated path length: ${cleanedPath.length}`);
-    return cleanedPath.length >= 2 ? cleanedPath : [];
+    const plannedTripForThisGuide = await _planSingleTripWithGuide(origin, destination, drivingGuide.coordinates);
+
+    if (plannedTripForThisGuide.length > 0) {
+        allProcessedTripOptions.push(plannedTripForThisGuide);
+    }
+  }
+
+  if (allProcessedTripOptions.length === 0) {
+    setLoadingStatus('🚶 No jeepney routes possible, providing walking directions...');
+    const directWalk = await getWalkingDirections(origin, destination);
+    return directWalk ? [[directWalk]] : [];
+  }
+
+  setLoadingStatus(`⚖️ Evaluating ${allProcessedTripOptions.length} route option${allProcessedTripOptions.length > 1 ? 's' : ''} - Comparing efficiency and transfers...`);
+
+  const evaluatedResults: EvaluatedTripResults = evaluateAndFilterTripOptions(allProcessedTripOptions);
+
+  const finalOptionsToPresent: PlannedTripLeg[][] = [];
+  if (evaluatedResults.recommended && evaluatedResults.recommended.length > 0) {
+      finalOptionsToPresent.push(evaluatedResults.recommended);
+  }
+  if (evaluatedResults.alternatives && evaluatedResults.alternatives.length > 0) {
+      finalOptionsToPresent.push(...evaluatedResults.alternatives);
+  }
+
+  setLoadingStatus('✅ Route planning complete! Displaying your best options...');
+  
+  return finalOptionsToPresent.length > 0 ? finalOptionsToPresent : allProcessedTripOptions;
 }
 
-export async function planTrip(origin: Coordinate, destination: Coordinate): Promise<Array<PlannedTripLeg[]>> {
-  console.log(`[PlanTrip START] Origin: ${JSON.stringify(origin)}, Destination: ${JSON.stringify(destination)}`);
-  let tripOptions: Array<PlannedTripLeg[]> = [];
+async function _planSingleTripWithGuide(
+  origin: Coordinate,
+  destination: Coordinate,
+  desiredPathPolyline: Coordinate[]
+): Promise<PlannedTripLeg[]> {
+  const { setLoadingStatus } = useMapStore.getState();
+  
+  let plannedLegs: PlannedTripLeg[] = [];
+  let currentLocation = origin;
+  let currentDesiredPathIndex = 0;
+  let lastJeepRouteIdTaken: string | undefined = undefined;
+  let consecutiveShortJeepLegsOnSameRoute = 0;
 
-  // 1. Direct Walking Option
-  console.log("[PlanTrip STAGE 1] Calculating direct walking route...");
-  const directWalkLeg = await getWalkingDirections(origin, destination);
-  if (directWalkLeg && directWalkLeg.coordinates.length > 0) {
-    console.log(` -> Direct walk option found. Distance: ${directWalkLeg.distance}m, Duration: ${directWalkLeg.duration}s`);
-    tripOptions.push([directWalkLeg]);
-  } else {
-    console.log(" -> No direct walking route found or it's invalid.");
-  }
+  setLoadingStatus('🎯 Starting route optimization from your location...');
 
-  // 2. Single Jeepney Ride (0 Transfers)
-  console.log("\n[PlanTrip STAGE 2] Evaluating single jeepney ride options...");
-  for (const jeepRoute of allJeepneyRoutes) {
-    console.log(` -> Checking route: ${jeepRoute.name} (ID: ${jeepRoute.id})`);
-    const boardingDetails = findNearestPointOnRoute(origin, jeepRoute);
-    console.log(`    - Nearest boarding point on ${jeepRoute.name}: dist ${boardingDetails.distanceToPoint.toFixed(0)}m, segIdx ${boardingDetails.segmentIndex}`);
+  for (let legCount = 0; legCount < MAX_TRIP_LEGS; legCount++) {
+    const distanceToFinalDest = calculateDistance(currentLocation, destination);
 
-    if (boardingDetails.distanceToPoint > MAX_WALK_DISTANCE_TO_JEEP || boardingDetails.segmentIndex === -1) {
-        console.log(`    - Skipping ${jeepRoute.name}: Boarding point too far or not found.`);
-        continue;
-    }
-
-    let bestAlightingForDest = null;
-    let minWalkDistFromJeepToFinalDest = Infinity;
-    console.log(`    - Finding best alighting point on ${jeepRoute.name} to destination...`);
-    for (let i = boardingDetails.segmentIndex; i < jeepRoute.coordinates.length -1; i++) {
-        const potentialAlightVertex = jeepRoute.coordinates[i+1];
-        if(!potentialAlightVertex) continue;
-        console.log(`      - Testing alight at vertex ${i+1} of ${jeepRoute.name}`);
-        const walkFromThisAlightPoint = await getWalkingDirections(potentialAlightVertex, destination);
-        if (walkFromThisAlightPoint && typeof walkFromThisAlightPoint.distance === 'number' && walkFromThisAlightPoint.distance < MAX_WALK_DISTANCE_TO_JEEP) {
-            console.log(`        - Walk from vertex ${i+1} to dest: ${walkFromThisAlightPoint.distance.toFixed(0)}m`);
-            if (walkFromThisAlightPoint.distance < minWalkDistFromJeepToFinalDest) {
-                minWalkDistFromJeepToFinalDest = walkFromThisAlightPoint.distance;
-                bestAlightingForDest = {
-                    pointOnPolyline: potentialAlightVertex,
-                    segmentIndex: i, // Segment *ending* at this vertex
-                    walkLeg: walkFromThisAlightPoint,
-                };
-                console.log(`        - New best alighting point for ${jeepRoute.name} found at vertex ${i+1}. Walk to dest: ${minWalkDistFromJeepToFinalDest.toFixed(0)}m`);
-            }
+    if (distanceToFinalDest < 100) {
+        setLoadingStatus('🏁 Almost there! Planning final approach...');
+        if (distanceToFinalDest > 5) {
+            const finalMicroWalk = await getWalkingDirections(currentLocation, destination);
+            if (finalMicroWalk) plannedLegs.push(finalMicroWalk);
         }
+        currentLocation = destination;
+        break;
     }
 
-    if (bestAlightingForDest) {
-      console.log(`    - Best alighting point for ${jeepRoute.name} found. Walk to dest: ${minWalkDistFromJeepToFinalDest.toFixed(0)}m. Fetching walk to boarding...`);
-      const walkToBoarding = await getWalkingDirections(origin, boardingDetails.pointOnPolyline);
-      if (walkToBoarding) {
-        console.log(`      - Walk to boarding ${jeepRoute.name} successful. Distance: ${typeof walkToBoarding.distance === 'number' ? walkToBoarding.distance.toFixed(0) : 'N/A'}m`);
-        const jeepRidePathCoords = getJeepneyRidePath(
-          jeepRoute,
-          boardingDetails.pointOnPolyline,
-          bestAlightingForDest.pointOnPolyline,
-          boardingDetails.segmentIndex,
-          bestAlightingForDest.segmentIndex
-        );
-        console.log(`      - Jeep ride path for ${jeepRoute.name} generated, length: ${jeepRidePathCoords.length}`);
-
-        if (jeepRidePathCoords.length >= 2) {
-          const jeepneyLeg: PlannedTripLeg = {
-            type: 'jeepney',
-            coordinates: jeepRidePathCoords,
-            routeName: jeepRoute.name,
-            routeId: jeepRoute.id,
-            routeColor: jeepRoute.color,
-            mode: jeepRoute.name,
-            instructions: `Take the ${jeepRoute.name}. Alight near ${bestAlightingForDest.walkLeg.startAddress || 'destination approach'}.`,
-            jeepBoardingPointInfo: `near ${walkToBoarding.endAddress || 'boarding area'}`,
-            jeepAlightingPointInfo: `near ${bestAlightingForDest.walkLeg.startAddress || 'alighting area'}`,
-          };
-          tripOptions.push([walkToBoarding, jeepneyLeg, bestAlightingForDest.walkLeg]);
-          console.log(`    -> SUCCESS: Single jeepney option added using ${jeepRoute.name}.`);
-        } else {
-          console.log(`    - FAILED: Jeep ride path for ${jeepRoute.name} was too short or invalid.`);
-        }
-      } else {
-         console.log(`    - FAILED: Could not get walking directions to boarding point of ${jeepRoute.name}.`);
-      }
-    } else {
-        console.log(`    - No suitable alighting point found on ${jeepRoute.name} for a single ride to destination.`);
-    }
-  }
-
-  // 3. One Transfer
-  console.log("\n[PlanTrip STAGE 3] Evaluating one-transfer options...");
-  let transferChecks = 0;
-  transferLoop: for (const routeA of allJeepneyRoutes) {
-    console.log(` -> Starting transfer search with Route A: ${routeA.name}`);
-    const boardingDetailsA = findNearestPointOnRoute(origin, routeA);
-    if (boardingDetailsA.distanceToPoint > MAX_WALK_DISTANCE_TO_JEEP || boardingDetailsA.segmentIndex === -1) {
-        console.log(`    - Skipping Route A (${routeA.name}): Initial boarding point too far or not found.`);
-        continue;
+    if (currentDesiredPathIndex >= desiredPathPolyline.length - 1 && desiredPathPolyline.length > 0) {
+         setLoadingStatus('🚶 Planning final walking segment to destination...');
+         const finalWalk = await getWalkingDirections(currentLocation, destination);
+         if (finalWalk && (finalWalk.distance as number > 5)) {
+            plannedLegs.push(finalWalk);
+         }
+         currentLocation = destination;
+         break;
     }
 
-    console.log(`    - Route A (${routeA.name}): Boarding at seg ${boardingDetailsA.segmentIndex}, dist ${boardingDetailsA.distanceToPoint.toFixed(0)}m. Fetching walk to boarding A...`);
-    const walkToBoardingA = await getWalkingDirections(origin, boardingDetailsA.pointOnPolyline);
-    if (!walkToBoardingA) {
-        console.log(`    - FAILED: Could not get walking directions to boarding point of Route A (${routeA.name}).`);
-        continue;
-    }
-    console.log(`      - Walk to boarding Route A (${routeA.name}) successful.`);
+    setLoadingStatus(`🔎 Looking for nearby jeepney routes (${legCount + 1}/${MAX_TRIP_LEGS} segments)...`);
 
-    for (let i = boardingDetailsA.segmentIndex; i < routeA.coordinates.length - 1; i++) { // Iterate alighting points on A
-      transferChecks++;
-      if (transferChecks > MAX_TRANSFER_ITERATIONS_DEBUG) {
-        console.warn(`DEBUG: Exceeded MAX_TRANSFER_ITERATIONS_DEBUG (${MAX_TRANSFER_ITERATIONS_DEBUG}). Breaking from transfer search.`);
-        break transferLoop;
-      }
-      const ptA_alight_for_transfer = routeA.coordinates[i + 1];
-      console.log(`    - Route A (${routeA.name}): Considering alight at vertex ${i+1} for transfer. Transfer check #${transferChecks}`);
+    const alignedJeepInfo: AlignedJeepInfo | null = findBestAlignedJeepney(
+      currentLocation,
+      desiredPathPolyline,
+      currentDesiredPathIndex,
+      MAX_WALK_TO_JEEP_METERS,
+      destination
+    );
 
-      for (const routeB of allJeepneyRoutes) {
-        if (routeA.id === routeB.id) continue;
-        // console.log(`      - Checking transfer from ${routeA.name} to ${routeB.name}...`);
-
-        const boardingDetailsB = findNearestPointOnRoute(ptA_alight_for_transfer, routeB);
-        if (boardingDetailsB.distanceToPoint > MAX_WALK_DISTANCE_FOR_TRANSFER || boardingDetailsB.segmentIndex === -1) {
-            // console.log(`        - Skipping Route B (${routeB.name}): Transfer boarding point too far or not found from Route A's alight point.`);
-            continue;
-        }
-        // console.log(`        - Route B (${routeB.name}): Potential transfer boarding at seg ${boardingDetailsB.segmentIndex}, dist ${boardingDetailsB.distanceToPoint.toFixed(0)}m.`);
+    if (alignedJeepInfo) {
+        setLoadingStatus(`🚌 Found ${alignedJeepInfo.jeepRoute.name} - Calculating boarding and alighting points...`);
         
-        const IS_OVERLAPPING_PAIR_FOR_TRANSFER =
-            ( (routeA.id === 'checkpointSilver' && routeB.id === 'checkpointViolet') ||
-              (routeA.id === 'checkpointViolet' && routeB.id === 'checkpointSilver') );
-
-        if (IS_OVERLAPPING_PAIR_FOR_TRANSFER && boardingDetailsB.distanceToPoint < TRIVIAL_TRANSFER_WALK_THRESHOLD) {
-            console.log(`        - SKIPPING trivial overlap transfer from ${routeA.name} to ${routeB.name} (walk: ${boardingDetailsB.distanceToPoint.toFixed(0)}m).`);
-            continue; 
-        }
-
-        console.log(`        - Potential transfer: ${routeA.name} (alight vertex ${i+1}) to ${routeB.name} (board seg ${boardingDetailsB.segmentIndex}). Fetching walk between them...`);
-        const walkToBoardingB = await getWalkingDirections(ptA_alight_for_transfer, boardingDetailsB.pointOnPolyline);
-        if (!walkToBoardingB) {
-            console.log(`        - FAILED: Could not get walking directions for transfer from ${routeA.name} to ${routeB.name}.`);
-            continue;
-        }
-        console.log(`          - Walk for transfer to ${routeB.name} successful.`);
-
-        let bestAlightingB_for_Dest = null;
-        let minWalkDistFromBToFinalDest = Infinity;
-        // console.log(`          - Finding best alighting point on ${routeB.name} to final destination...`);
-        for (let j = boardingDetailsB.segmentIndex; j < routeB.coordinates.length - 1; j++) {
-            const potentialAlightVertexB = routeB.coordinates[j+1];
-            if(!potentialAlightVertexB) continue;
-            const walkFromThisAlightB = await getWalkingDirections(potentialAlightVertexB, destination);
-            if(walkFromThisAlightB && typeof walkFromThisAlightB.distance === 'number' && walkFromThisAlightB.distance < MAX_WALK_DISTANCE_TO_JEEP) {
-                if(walkFromThisAlightB.distance < minWalkDistFromBToFinalDest){
-                    minWalkDistFromBToFinalDest = walkFromThisAlightB.distance;
-                    bestAlightingB_for_Dest = {
-                        pointOnPolyline: potentialAlightVertexB,
-                        segmentIndex: j,
-                        walkLeg: walkFromThisAlightB,
-                    };
+        if (alignedJeepInfo.jeepRoute.id === lastJeepRouteIdTaken &&
+            calculateDistance(currentLocation, alignedJeepInfo.boardingPointOnJeep) < 120 &&
+            calculateDistance(alignedJeepInfo.boardingPointOnJeep, alignedJeepInfo.alightPointOnJeep) < MIN_JEEP_RIDE_PROGRESS_METERS * 1.8) {
+            consecutiveShortJeepLegsOnSameRoute++;
+            if (consecutiveShortJeepLegsOnSameRoute > 0) {
+                setLoadingStatus('🔄 Optimizing route to avoid short segments...');
+                const nextSignificantDpIdx = Math.min(currentDesiredPathIndex + Math.floor(MIN_JEEP_RIDE_PROGRESS_METERS / 40), desiredPathPolyline.length - 1);
+                if (nextSignificantDpIdx > currentDesiredPathIndex && desiredPathPolyline[nextSignificantDpIdx]) {
+                    const forcedWalk = await getWalkingDirections(currentLocation, desiredPathPolyline[nextSignificantDpIdx]);
+                    if (forcedWalk && forcedWalk.coordinates.length > 1 && (forcedWalk.distance as number > 10)) {
+                        plannedLegs.push(forcedWalk);
+                        currentLocation = forcedWalk.coordinates.slice(-1)[0];
+                        currentDesiredPathIndex = nextSignificantDpIdx;
+                        lastJeepRouteIdTaken = undefined;
+                        consecutiveShortJeepLegsOnSameRoute = 0;
+                        continue;
+                    }
                 }
             }
-        }
-
-        if (bestAlightingB_for_Dest) {
-          console.log(`          - Best alighting point for ${routeB.name} found. Walk to dest: ${minWalkDistFromBToFinalDest.toFixed(0)}m.`);
-          const jeepLegA_coords = getJeepneyRidePath(routeA, boardingDetailsA.pointOnPolyline, ptA_alight_for_transfer, boardingDetailsA.segmentIndex, i);
-          const jeepLegB_coords = getJeepneyRidePath(routeB, boardingDetailsB.pointOnPolyline, bestAlightingB_for_Dest.pointOnPolyline, boardingDetailsB.segmentIndex, bestAlightingB_for_Dest.segmentIndex);
-          // console.log(`            Jeep A path length: ${jeepLegA_coords.length}, Jeep B path length: ${jeepLegB_coords.length}`);
-
-          if (jeepLegA_coords.length >= 2 && jeepLegB_coords.length >= 2) {
-            const plan: PlannedTripLeg[] = [
-              walkToBoardingA,
-              { type: 'jeepney', coordinates: jeepLegA_coords, routeName: routeA.name, routeId: routeA.id, routeColor: routeA.color, mode: routeA.name, instructions: `Take ${routeA.name}. Alight near ${walkToBoardingB.startAddress || 'transfer point'} to switch to ${routeB.name}.`, jeepBoardingPointInfo: `near ${walkToBoardingA.endAddress || 'boarding area'}`, jeepAlightingPointInfo: `near ${walkToBoardingB.startAddress || 'transfer area'}` },
-              walkToBoardingB,
-              { type: 'jeepney', coordinates: jeepLegB_coords, routeName: routeB.name, routeId: routeB.id, routeColor: routeB.color, mode: routeB.name, instructions: `Take ${routeB.name}. Alight near ${bestAlightingB_for_Dest.walkLeg.startAddress || 'destination approach'}.`, jeepBoardingPointInfo: `near ${walkToBoardingB.endAddress || 'boarding area'}`, jeepAlightingPointInfo: `near ${bestAlightingB_for_Dest.walkLeg.startAddress || 'alighting area'}`},
-              bestAlightingB_for_Dest.walkLeg,
-            ];
-            tripOptions.push(plan);
-            console.log(`    -> SUCCESS: One-transfer option added: ${routeA.name} -> ${routeB.name}.`);
-          } else {
-            console.log(`          - FAILED: Jeep A or B path was too short for transfer ${routeA.name} -> ${routeB.name}.`);
-          }
         } else {
-            console.log(`          - No suitable alighting point found on ${routeB.name} for transfer from ${routeA.name}.`);
+            consecutiveShortJeepLegsOnSameRoute = 0;
         }
+
+      const walkToBoardLeg = await getWalkingDirections(currentLocation, alignedJeepInfo.boardingPointOnJeep);
+      const walkDistanceToBoard = (walkToBoardLeg?.distance as number) ?? Infinity;
+
+      if (walkToBoardLeg && walkDistanceToBoard <= MAX_WALK_TO_JEEP_METERS) {
+        setLoadingStatus(`🚶‍♂️ Adding ${Math.round(walkDistanceToBoard)}m walk to ${alignedJeepInfo.jeepRoute.name} boarding point...`);
+        
+        if (walkDistanceToBoard > 5) {
+            plannedLegs.push(walkToBoardLeg);
+        }
+        currentLocation = alignedJeepInfo.boardingPointOnJeep;
+
+        const jeepRideCoordinates = trimJeepLeg(
+            alignedJeepInfo.jeepRoute.coordinates,
+            alignedJeepInfo.boardingPointOnJeep,
+            alignedJeepInfo.alightPointOnJeep,
+            alignedJeepInfo.jeepBoardingVertexIndex,
+            alignedJeepInfo.jeepAlightingVertexIndex,
+            alignedJeepInfo.tookLoop,
+            alignedJeepInfo.loopConnectIndex
+        );
+
+        const jeepRideDist = calculateDistanceOfPolyline(jeepRideCoordinates);
+
+        if (jeepRideCoordinates.length >= 2 && jeepRideDist >= MIN_JEEP_RIDE_PROGRESS_METERS) {
+            const jeepRideLeg: PlannedTripLeg = {
+                type: 'jeepney',
+                coordinates: jeepRideCoordinates,
+                routeName: alignedJeepInfo.jeepRoute.name,
+                routeId: alignedJeepInfo.jeepRoute.id,
+                routeColor: alignedJeepInfo.jeepRoute.color,
+                instructions: `Take ${alignedJeepInfo.jeepRoute.name}${alignedJeepInfo.tookLoop ? ' (route loops)' : ''}.`,
+                distance: jeepRideDist,
+                duration: (jeepRideDist / (12 * 1000 / 3600)),
+                jeepBoardingPointInfo: `Board ${alignedJeepInfo.jeepRoute.name}${alignedJeepInfo.jeepBoardingVertexIndex === 0 ? ' at terminal' : ''}`,
+                jeepAlightingPointInfo: `Alight from ${alignedJeepInfo.jeepRoute.name}`,
+                jeepLegFullRouteStartIndex: alignedJeepInfo.jeepBoardingVertexIndex,
+                jeepLegFullRouteEndIndex: alignedJeepInfo.jeepAlightingVertexIndex,
+                isTerminalBoarding: alignedJeepInfo.jeepBoardingVertexIndex === 0,
+            };
+            plannedLegs.push(jeepRideLeg);
+            currentLocation = alignedJeepInfo.alightPointOnJeep;
+            currentDesiredPathIndex = alignedJeepInfo.desiredPathEndIndex;
+            lastJeepRouteIdTaken = alignedJeepInfo.jeepRoute.id;
+          } else {
+             setLoadingStatus('🚶 No suitable jeepney nearby, planning walking route to destination...');
+             const finalWalk = await getWalkingDirections(currentLocation, destination);
+             if (finalWalk && (finalWalk.distance as number > 5)) plannedLegs.push(finalWalk);
+             currentLocation = destination; break;
+          }
+      } else {
+        setLoadingStatus('🚶 No suitable jeepney nearby, planning walking route to destination...');
+        const finalWalk = await getWalkingDirections(currentLocation, destination);
+        if (finalWalk && (finalWalk.distance as number > 5)) plannedLegs.push(finalWalk);
+        currentLocation = destination;
+        break;
       }
+    } else {
+      if (distanceToFinalDest > MAX_FINAL_WALK_METERS * 0.75) {
+          setLoadingStatus('📍 Exploring alternative walking paths...');
+          const walkAlongDesiredPathDist = Math.min(MAX_WALK_TO_JEEP_METERS * 0.65, distanceToFinalDest * 0.4);
+          let nextPointIndex = currentDesiredPathIndex;
+          let distWalked = 0;
+          for(let k=currentDesiredPathIndex; k < desiredPathPolyline.length -1; k++) {
+              if(!desiredPathPolyline[k] || !desiredPathPolyline[k+1]) break;
+              distWalked += calculateDistance(desiredPathPolyline[k], desiredPathPolyline[k+1]);
+              nextPointIndex = k + 1;
+              if (distWalked >= walkAlongDesiredPathDist) break;
+          }
+
+          if (nextPointIndex > currentDesiredPathIndex && desiredPathPolyline[nextPointIndex]) {
+              const partialWalkLeg = await getWalkingDirections(currentLocation, desiredPathPolyline[nextPointIndex]);
+              if (partialWalkLeg && (partialWalkLeg.distance as number) > 10) {
+                  plannedLegs.push(partialWalkLeg);
+                  currentLocation = desiredPathPolyline[nextPointIndex];
+                  currentDesiredPathIndex = nextPointIndex;
+                  lastJeepRouteIdTaken = undefined;
+                  consecutiveShortJeepLegsOnSameRoute = 0;
+                  continue;
+              }
+          }
+      }
+      setLoadingStatus('🚶 Completing journey with walking directions...');
+      const finalWalk = await getWalkingDirections(currentLocation, destination);
+      if (finalWalk && (finalWalk.distance as number > 5)) {
+        plannedLegs.push(finalWalk);
+      }
+      currentLocation = destination;
+      break;
     }
   }
 
-  // Sort tripOptions
-  console.log("\n[PlanTrip STAGE 4] Sorting all found trip options...");
-  tripOptions.sort((planA, planB) => {
-    const getScore = (plan: PlannedTripLeg[]) => {
-      let score = 0;
-      let totalWalkDuration = 0;
-      let numJeepLegs = 0;
-      let isOnlyDirectWalk = true;
-      plan.forEach(leg => {
-        if (leg.type === 'walk') {
-          totalWalkDuration += (typeof leg.duration === 'number' ? leg.duration : 30 * 60);
-        } else if (leg.type === 'jeepney') {
-          numJeepLegs++;
-          isOnlyDirectWalk = false;
-          score += 5 * 60; // Base penalty for using a jeep (e.g., wait time)
+  if (plannedLegs.length > 0) {
+      const lastLeg = plannedLegs[plannedLegs.length -1];
+      if (lastLeg.coordinates && lastLeg.coordinates.length > 0) {
+        const lastActualLegEnd = lastLeg.coordinates.slice(-1)[0];
+        if (lastActualLegEnd && calculateDistance(lastActualLegEnd, destination) > 10) {
+            const finalConnectionWalk = await getWalkingDirections(lastActualLegEnd, destination);
+            if (finalConnectionWalk && (finalConnectionWalk.distance as number > 5)) {
+              plannedLegs.push(finalConnectionWalk);
+            }
         }
-      });
-      score += totalWalkDuration; 
-      score += numJeepLegs * 10 * 60; // Increased penalty for each jeep leg (transfer implication)
-
-      if (isOnlyDirectWalk && typeof plan[0]?.distance === 'number' && plan[0].distance <= PREFERRED_MAX_WALK_ONLY_DISTANCE) {
-        return totalWalkDuration - 50000; // Make very short walks highly preferred
-      } else if (isOnlyDirectWalk) {
-        return totalWalkDuration + 1000 * 60; // Penalize long direct walks
       }
-      return score;
-    };
-    return getScore(planA) - getScore(planB);
-  });
-
-  if (tripOptions.length > 0) {
-    console.log(`[PlanTrip END] Found ${tripOptions.length} trip options. Best option (${tripOptions[0].length} legs):`, JSON.stringify(tripOptions[0].map(leg => ({type: leg.type, name: leg.routeName, instructions: leg.instructions.substring(0,50) + "..." }))));
-  } else {
-    console.log("[PlanTrip END] No trip options found.");
+  } else if (calculateDistance(origin, destination) > 5) {
+       const directWalkFallback = await getWalkingDirections(origin, destination);
+       if (directWalkFallback && (directWalkFallback.distance as number > 5)) {
+           plannedLegs.push(directWalkFallback);
+       }
   }
-  return tripOptions;
+  setLoadingStatus('🔧 Optimizing route segments and connections...');
+  // Pass origin (absolute trip origin) and allGuidingPaths to postProcessTripLegs
+  // For this reverted version, postProcessTripLegs only needs legs and destination
+  return postProcessTripLegs(plannedLegs, destination);
 }

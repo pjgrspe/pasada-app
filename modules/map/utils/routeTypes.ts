@@ -10,50 +10,68 @@ export interface JeepneyRoute {
   name: string;
   coordinates: Coordinate[];
   color?: string;
-  // Future potential additions:
-  // landmarks?: Array<{ name: string; coordinate: Coordinate; segmentIndex?: number }>;
-  // typicalFare?: string;
-  // operatingHours?: string;
+  isLooping?: boolean;      // True if the route is detected as a loop
+  loopConnectIndex?: number; // The index in 'coordinates' where the end of the route connects back to form a loop
 }
 
 export interface PlannedTripLeg {
   type: 'walk' | 'jeepney';
   coordinates: Coordinate[];
-  distance?: number | string; // in meters for walking, string for display
-  duration?: number | string; // in seconds for walking, string for display
-  mode?: string; // 'walking', jeepney route name
+  distance?: number | string;
+  duration?: number | string;
+  mode?: string;
   routeName?: string;
   routeId?: string;
   routeColor?: string;
-  instructions: string; // Ensure this is always populated
-  startAddress?: string; // From Google Directions for walking legs
-  endAddress?: string;   // From Google Directions for walking legs
-  // Specific to jeepney legs for clearer instructions:
-  jeepBoardingPointInfo?: string; // e.g., "near [landmark/street from walking leg's endAddress]"
-  jeepAlightingPointInfo?: string; // e.g., "near [landmark/street from next walking leg's startAddress]"
+  instructions: string;
+  startAddress?: string;
+  endAddress?: string;
+  jeepBoardingPointInfo?: string;
+  jeepAlightingPointInfo?: string;
+  jeepLegFullRouteStartIndex?: number;
+  jeepLegFullRouteEndIndex?: number;
+  isTerminalBoarding?: boolean;
 }
 
-// Interface for the Google Directions API response (simplified)
+// Defines a single step in a route leg (from Google Directions)
+interface GoogleDirectionsStep {
+  html_instructions: string;
+  polyline: { points: string };
+  distance: { text: string; value: number };
+  duration: { text: string; value: number };
+}
+
+// Defines a single leg of a route (from Google Directions)
+interface GoogleDirectionsLeg {
+  distance: { text: string; value: number };
+  duration: { text: string; value: number };
+  start_address: string;
+  end_address: string;
+  start_location: Coordinate;
+  end_location: Coordinate;
+  steps: GoogleDirectionsStep[];
+}
+
+// Defines a single route from Google Directions API response
+interface GoogleDirectionsRoute {
+  summary: string;
+  overview_polyline: {
+    points: string;
+  };
+  legs: GoogleDirectionsLeg[];
+  copyrights?: string;
+  warnings?: string[];
+  waypoint_order?: number[];
+  bounds?: {
+    northeast: Coordinate;
+    southwest: Coordinate;
+  };
+}
+
+// Defines the overall structure of the Google Directions API response
 export interface GoogleDirectionsResponse {
   status: string;
-  routes: Array<{
-    overview_polyline: {
-      points: string;
-    };
-    legs: Array<{
-      distance: { text: string; value: number };
-      duration: { text: string; value: number };
-      start_address: string;
-      end_address: string;
-      steps: Array<{
-        html_instructions: string;
-        polyline: { points: string };
-        distance: { value: number };
-        duration: { value: number };
-      }>;
-    }>;
-    // error_message is typically at the root level of the response, not per route
-  }>;
-  error_message?: string; // Corrected: Moved to root level
-  geocoded_waypoints?: any[]; // Other potential root level properties
+  routes: GoogleDirectionsRoute[];
+  geocoded_waypoints?: any[];
+  error_message?: string;
 }
