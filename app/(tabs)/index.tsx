@@ -21,6 +21,7 @@ import Loader from '@/components/Loader';
 // TripOptionsDisplayComponent is no longer imported as a whole
 import InstructionLegItem from '@/modules/map/components/InstructionLegItem'; // NEW IMPORT
 import LoadingStatusDisplay from '@/modules/map/components/LoadingStatusDisplay';
+import LocationPickerModal from '@/modules/map/components/LocationPickerModal'; // NEW IMPORT
 
 import MapViewComponent from '@/modules/map/components/MapViewComponent';
 import MapPin from '@/modules/map/components/MapPin';
@@ -38,6 +39,7 @@ import { useTheme } from '@/hooks/useTheme';
 import { useTripStore } from '@/modules/map/store/useTripStore';
 import * as DebugTestTrip from '@/modules/map/utils/DebugTestTrip';
 import { Text } from '@/components/Themed';
+import { DEBUG_MODE_ENABLED } from '@/modules/map/constants/tripPlanningConstants';
 
 const initialMapRegion: Region = {
     latitude: 15.1446, 
@@ -74,6 +76,10 @@ export default function DashboardScreen() {
     const [startPointQuery, setStartPointQuery] = useState('');
     const [destinationQuery, setDestinationQuery] = useState('');
 
+    // Add new state for location picker modal
+    const [locationPickerVisible, setLocationPickerVisible] = useState(false);
+    const [locationPickerType, setLocationPickerType] = useState<'start' | 'destination'>('start');
+
     const { mapRef, setMapRef, animateToRegion, onRegionChangeComplete } = useMap();
     const { currentLocation, getSingleLocation: fetchDeviceLocation, locationPermissionStatus } = useLocationTracking();
 
@@ -96,6 +102,25 @@ export default function DashboardScreen() {
         loadingStatus, // Add this
     } = useMapStore();
 
+
+    // Add location picker handlers
+    const handleLocationPickerOpen = useCallback((type: 'start' | 'destination') => {
+        setLocationPickerType(type);
+        setLocationPickerVisible(true);
+    }, []);
+
+    const handleLocationPickerClose = useCallback(() => {
+        setLocationPickerVisible(false);
+    }, []);
+
+    const handleLocationConfirm = useCallback((coordinate: Coordinate, address: string) => {
+        if (locationPickerType === 'start') {
+            setStartPointQuery(address);
+        } else {
+            setDestinationQuery(address);
+        }
+        setLocationPickerVisible(false);
+    }, [locationPickerType]);
 
     useEffect(() => {
         // ... (effect logic remains the same) ...
@@ -179,7 +204,6 @@ export default function DashboardScreen() {
     };
 
     const handleTestSampleTripButton = () => {
-        // ... (function remains the same) ...
         console.log("Test Sample Trip (Dev) button pressed. Planning with predefined sample data.");
         setStartPointQuery("Sample Start Location"); 
         setDestinationQuery("Sample End Location (AUF)"); 
@@ -197,7 +221,6 @@ export default function DashboardScreen() {
     };
 
     const handleTestSampleTripButton2 = () => {
-        // ... (function remains the same) ...
         console.log("Test Sample Trip (Dev) button pressed. Planning with predefined sample data.");
         setStartPointQuery("Sample Start Location (AUF)"); 
         setDestinationQuery("Sample End Location (Diamond subd)"); 
@@ -215,7 +238,6 @@ export default function DashboardScreen() {
     };
 
     const handleTestSampleTripButton3 = () => {
-        // ... (function remains the same) ...
         console.log("Test Sample Trip (Dev) button pressed. Planning with predefined sample data.");
         setStartPointQuery("Sample Start Location"); 
         setDestinationQuery("Sample End Location"); 
@@ -233,7 +255,6 @@ export default function DashboardScreen() {
     };
 
     const handleTestSampleTripButton4 = () => {
-        // ... (function remains the same) ...
         console.log("Test Sample Trip (Dev) button pressed. Planning with predefined sample data.");
         setStartPointQuery("Sample Start Location"); 
         setDestinationQuery("Sample End Location"); 
@@ -251,7 +272,6 @@ export default function DashboardScreen() {
     };
 
     const handleTestSampleTripButton5 = () => {
-        // ... (function remains the same) ...
         console.log("Test Sample Trip (Dev) button pressed. Planning with predefined sample data.");
         setStartPointQuery("Sample Start Location"); 
         setDestinationQuery("Sample End Location"); 
@@ -269,7 +289,6 @@ export default function DashboardScreen() {
     };
 
     const handleClearAll = () => {
-        // ... (function remains the same) ...
         clearDisplayedTripInfo();
         setStartPointQuery('');
         setDestinationQuery('');
@@ -288,12 +307,11 @@ export default function DashboardScreen() {
     // --- Define sections for the main FlatList ---
     const listSections: Array<{type: string, key: string, data?: any}> = [
         { type: 'planning_inputs', key: 'planning_inputs' },
-        { type: 'test_button', key: 'test_button' },
     ];
 
-    // Add loading status section if there's loading or status
-    if (isFetchingRoute || loadingStatus) {
-        listSections.push({ type: 'loading_status', key: 'loading_status' });
+    // Only add test button section if debug mode is enabled
+    if (DEBUG_MODE_ENABLED) {
+        listSections.push({ type: 'test_button', key: 'test_button' });
     }
 
     listSections.push({ type: 'map_view', key: 'map_view' });
@@ -316,7 +334,8 @@ export default function DashboardScreen() {
     const renderListSection = ({ item }: { item: {type: string, key: string, data?: any} }) => {
         switch (item.type) {
             case 'test_button':
-                return (
+                // Only render if debug mode is enabled (double-check for safety)
+                return DEBUG_MODE_ENABLED ? (
                     <View style={dynamicStyles.testButtonContainer}>
                         <RNButton title="Test 1 Sample Trip (Dev)" onPress={handleTestSampleTripButton} color={isDarkMode ? colors.accent : colors.primary} />
                         <RNButton title="Test 2 Sample Trip (Dev)" onPress={handleTestSampleTripButton2} color={isDarkMode ? colors.accent : colors.primary} />
@@ -324,27 +343,45 @@ export default function DashboardScreen() {
                         <RNButton title="Test 4 Sample Trip (Dev)" onPress={handleTestSampleTripButton4} color={isDarkMode ? colors.accent : colors.primary} />
                         <RNButton title="Test 5 Sample Trip (Dev)" onPress={handleTestSampleTripButton5} color={isDarkMode ? colors.accent : colors.primary} />
                     </View>
-                );
+                ) : null;
             case 'planning_inputs':
                 return (
                     <View style={[styles.planningContainer, dynamicStyles.planningContainer]}>
-                        <SearchBar
-                            placeholder="Start Point (or 'My Location')"
-                            value={startPointQuery}
-                            onChangeText={setStartPointQuery}
-                            onSearchSubmit={() => handleGeocodeAndSetPoint(startPointQuery, 'start')}
-                            iconName="navigate-circle-outline"
-                            style={dynamicStyles.inputContainer}
-                        />
+                        {/* Replace SearchBar with TouchableOpacity for start point */}
+                        <TouchableOpacity 
+                            style={[dynamicStyles.inputContainer, styles.inputTouchable]}
+                            onPress={() => handleLocationPickerOpen('start')}
+                        >
+                            <View style={styles.inputRow}>
+                                <Ionicons name="navigate-circle-outline" size={20} color={colors.primary} />
+                                <Text style={[
+                                    styles.inputText, 
+                                    { color: startPointQuery ? colors.text : colors.text + '80' }
+                                ]}>
+                                    {startPointQuery || "Start Point (or 'My Location')"}
+                                </Text>
+                                <Ionicons name="chevron-forward" size={16} color={colors.text + '60'} />
+                            </View>
+                        </TouchableOpacity>
+
                         <View style={styles.separatorLine}></View>
-                        <SearchBar
-                            placeholder="Destination"
-                            value={destinationQuery}
-                            onChangeText={setDestinationQuery}
-                            onSearchSubmit={() => handleGeocodeAndSetPoint(destinationQuery, 'destination')}
-                            iconName="location-outline"
-                            style={dynamicStyles.inputContainer}
-                        />
+
+                        {/* Replace SearchBar with TouchableOpacity for destination */}
+                        <TouchableOpacity 
+                            style={[dynamicStyles.inputContainer, styles.inputTouchable]}
+                            onPress={() => handleLocationPickerOpen('destination')}
+                        >
+                            <View style={styles.inputRow}>
+                                <Ionicons name="location-outline" size={20} color={colors.primary} />
+                                <Text style={[
+                                    styles.inputText, 
+                                    { color: destinationQuery ? colors.text : colors.text + '80' }
+                                ]}>
+                                    {destinationQuery || "Destination"}
+                                </Text>
+                                <Ionicons name="chevron-forward" size={16} color={colors.text + '60'} />
+                            </View>
+                        </TouchableOpacity>
                         
                         <View style={styles.optionsRow}>
                             <TouchableOpacity 
@@ -366,14 +403,6 @@ export default function DashboardScreen() {
                         </View>
                     </View>
                 );
-            case 'loading_status':
-                return (
-                    <LoadingStatusDisplay
-                        isLoading={isFetchingRoute}
-                        status={loadingStatus}
-                        defaultMessage="Planning your route..."
-                    />
-                );
             case 'map_view':
                 return (
                     <View style={styles.mapContainer}>
@@ -393,6 +422,16 @@ export default function DashboardScreen() {
                                 <RoutePolyline key={route.id} coordinates={route.coordinates} strokeColor={route.color} strokeWidth={route.routeType === 'walk' ? 4 : 6} lineDashPattern={route.routeType === 'walk' ? [1, 8] : undefined} zIndex={route.routeType === 'jeepney' ? 10 : 5} />
                             ))}
                         </MapViewComponent>
+                        
+                        {/* Add the LoadingStatusDisplay as an overlay inside the map container */}
+                        {(isFetchingRoute || loadingStatus) && (
+                            <LoadingStatusDisplay
+                                isLoading={isFetchingRoute}
+                                status={loadingStatus}
+                                defaultMessage="Planning your route..."
+                            />
+                        )}
+                        
                         <TouchableOpacity style={[styles.mapActionButton, styles.locateButton, dynamicStyles.mapInfoButton]} onPress={() => currentLocation?.coords && animateToRegion && animateToRegion({...currentLocation.coords, latitudeDelta: 0.01, longitudeDelta: 0.005})}>
                             <Ionicons name="locate" size={22} color={dynamicStyles.mapInfoIcon.color} />
                         </TouchableOpacity>
@@ -482,45 +521,88 @@ export default function DashboardScreen() {
         mapInfoIcon: { color: colors.text },
         previousRoutesContainer: { 
             backgroundColor: colors.card, 
-            // marginTop: 10, // Removed, as it's now part of FlatList flow
             paddingBottom: 10,
         },
         previousTitle: { color: colors.text },
         arrowButton: { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 },
         arrowIcon: { color: colors.text },
         inputStyle: { color: colors.text, backgroundColor: colors.inputBackground },
-        inputContainer: { backgroundColor: colors.inputBackground, borderColor: colors.border },
+        inputContainer: { 
+            backgroundColor: colors.inputBackground, 
+            borderColor: colors.border,
+            borderWidth: 1,
+            borderRadius: 12,
+        },
         testButtonContainer: {
             marginVertical: 10,
             marginHorizontal: 15,
         },
-        // bottomSheetContainer removed as TripOptionsDisplay is broken down
+        loadingOverlay: {
+            ...StyleSheet.absoluteFillObject,
+            backgroundColor: 'rgba(0,0,0,0.4)',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 1000,
+            borderRadius: 15,
+        },
+        mapActionButton: {
+            position: 'absolute',
+            padding: 8,
+            borderRadius: 20,
+            elevation: 8,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 0.2,
+            shadowRadius: 2,
+            zIndex: 1500,
+        },
     });
 
     return (
         <KeyboardAvoidingView
             style={dynamicStyles.flexContainer}
             behavior={Platform.OS === "ios" ? "padding" : "height"}
-            keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0} // Adjust if necessary based on header height
+            keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
         >
             <FlatList
                 style={dynamicStyles.flexContainer}
                 data={listSections}
                 renderItem={renderListSection}
                 keyExtractor={(item) => item.key}
-                ListFooterComponent={<View style={{ height: 50 }} />} // Add some padding at the bottom
+                ListFooterComponent={<View style={{ height: 50 }} />}
                 keyboardShouldPersistTaps="handled"
-                // stickyHeaderIndices={allTripOptions && allTripOptions.length > 0 ? [2] : undefined} // Adjust index if needed
+            />
+            
+            {/* Location Picker Modal */}
+            <LocationPickerModal
+                visible={locationPickerVisible}
+                onClose={handleLocationPickerClose}
+                onLocationConfirm={handleLocationConfirm}
+                title={locationPickerType === 'start' ? 'Select Start Point' : 'Select Destination'}
+                showCurrentLocationButton={locationPickerType === 'start'}
             />
         </KeyboardAvoidingView>
     );
 }
 
-// Remove these from styles since they're now in the component
+// Add new styles for the touchable inputs
 const styles = StyleSheet.create({
-    // scrollContent removed as FlatList handles its own content container
     planningContainer: { /* Base styles, theming in dynamicStyles */ },
     separatorLine: { height: 1, backgroundColor: '#4A4A4C', marginVertical: 10 },
+    inputTouchable: {
+        marginVertical: 2,
+    },
+    inputRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 14,
+        paddingHorizontal: 16,
+    },
+    inputText: {
+        fontSize: 16,
+        flex: 1,
+        marginLeft: 12,
+    },
     optionsRow: { 
         flexDirection: 'row', 
         justifyContent: 'space-around', 
@@ -545,13 +627,13 @@ const styles = StyleSheet.create({
     },
     mapContainer: {
         height: 350,
-        marginHorizontal: 10, // Keep consistent with planning container
+        marginHorizontal: 10,
         borderRadius: 15,
         overflow: 'hidden',
         backgroundColor: '#E0E0E0',
         position: 'relative',
-        marginTop: 0, // No margin if it's an item in FlatList
-        marginBottom: 10, // Space before next section
+        marginTop: 0,
+        marginBottom: 10,
         elevation: 2,
         borderWidth: 1,
         borderColor: 'rgba(0,0,0,0.1)'
@@ -560,16 +642,16 @@ const styles = StyleSheet.create({
         position: 'absolute',
         padding: 8,
         borderRadius: 20,
-        elevation: 3,
+        elevation: 8,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 1 },
         shadowOpacity: 0.2,
         shadowRadius: 2,
+        zIndex: 1500,
     },
     locateButton: { top: 10, right: 10, },
     recenterButton: { top: 60, right: 10, },
-    tripOptionsContainer: { // New style for the tabs section
-        // Similar to old TripOptionsDisplay container style
+    tripOptionsContainer: {
         borderTopLeftRadius: 20,
         borderTopRightRadius: 20,
         paddingTop: 0,
@@ -578,14 +660,13 @@ const styles = StyleSheet.create({
         shadowOffset: { width: 0, height: -3 },
         shadowOpacity: 0.1,
         shadowRadius: 4,
-        marginBottom: 0, // No margin if instruction legs follow directly
+        marginBottom: 0,
     },
-    tabsContainerScrollView: { // Style for the horizontal ScrollView for tabs
+    tabsContainerScrollView: {
         flexDirection: 'row',
         paddingVertical: 8,
         paddingHorizontal: 5,
         borderBottomWidth: 1,
-        // borderBottomColor will be themed by parent View's backgroundColor
     },
     tabButton: {
         paddingVertical: 10,
@@ -599,7 +680,6 @@ const styles = StyleSheet.create({
     },
     tabText: { fontSize: 14, fontWeight: '600', textAlign: 'center', },
     tabSummaryText: { fontSize: 11, textAlign: 'center', marginTop: 2, },
-    // InstructionLegItem styles are now in InstructionLegItem.tsx
     previousRoutesContainer: { /* Base styles, theming in dynamicStyles */ },
     previousHeader: {
         flexDirection: 'row',

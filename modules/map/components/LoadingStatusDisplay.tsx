@@ -45,56 +45,56 @@ export default function LoadingStatusDisplay({
 
   return (
     <Animated.View style={[
-      styles.container, 
-      { backgroundColor: colors.card, opacity: fadeAnim }
+      styles.statusContainer, 
+      { 
+        backgroundColor: colors.card,
+        borderLeftColor: colors.primary,
+        opacity: fadeAnim 
+      }
     ]}>
-      <View style={[styles.statusContainer, { borderLeftColor: colors.primary }]}>
-        <View style={styles.iconContainer}>
-          <Text style={styles.emoji}>{emoji}</Text>
-          <ActivityIndicator 
-            size="small" 
-            color={colors.primary} 
-            style={styles.indicator} 
-          />
-        </View>
-        <View style={styles.textContainer}>
-          <Text style={[styles.statusText, { color: colors.text }]}>
-            {message || 'Processing...'}
-          </Text>
-        </View>
+      <View style={styles.iconContainer}>
+        <Text style={styles.emoji}>{emoji}</Text>
+        <ActivityIndicator 
+          size="small" 
+          color={colors.primary} 
+          style={styles.indicator} 
+        />
+      </View>
+      <View style={styles.textContainer}>
+        <Text style={[styles.statusText, { color: colors.text }]}>
+          {message || 'Processing...'}
+        </Text>
       </View>
     </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    marginHorizontal: 10,
-    marginBottom: 10,
-    borderRadius: 15,
-    padding: 15,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-  },
   statusContainer: {
+    position: 'absolute', // Make it an overlay
+    top: 15, // Position from top of map container
+    left: 15, // Position from left of map container
+    right: 15, // Position from right of map container
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.03)',
-    borderRadius: 8,
+    borderRadius: 12,
     padding: 12,
     borderLeftWidth: 3,
+    elevation: 15, // Very high elevation
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    zIndex: 2000, // Highest z-index
   },
   iconContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: 10,
   },
   emoji: {
-    fontSize: 18,
-    marginRight: 8,
+    fontSize: 16,
+    marginRight: 6,
   },
   indicator: {
     // Small spinner next to emoji
@@ -103,8 +103,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   statusText: {
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 13,
+    lineHeight: 18,
     fontWeight: '500',
   },
 });

@@ -42,3 +42,6 @@ export const SIMILARITY_TRANSFER_POINT_PROXIMITY_METERS = 100;
 // --- Constants for Individual Walk-to-Jeep Connection Optimization ---
 // export const WALK_OPTIMIZATION_SEARCH_RADIUS_METERS = 200; // REMOVED - Will be dynamic
 export const MIN_WALK_SAVING_FOR_CONNECTION_OPTIMIZATION = 30; // New walk must be at least this much shorter
+
+
+export const DEBUG_MODE_ENABLED = false; // Set to false to hide debug components in production

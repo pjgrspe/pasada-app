@@ -229,6 +229,32 @@ export async function geocode(address: string): Promise<{ coordinate: Coordinate
     }
 }
 
+export async function reverseGeocode(coordinate: Coordinate): Promise<{ formattedAddress: string } | null> {
+  try {
+    const apiKey = gMapsApiKey;
+    if (!apiKey) {
+      console.error("FATAL: Google Maps API Key is not configured in APIkeys.ts or is empty.");
+      return null;
+    }
+
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${coordinate.latitude},${coordinate.longitude}&key=${apiKey}`;
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (data && data.status === 'OK' && data.results && data.results.length > 0) {
+      return {
+        formattedAddress: data.results[0].formatted_address,
+      };
+    } else {
+      console.warn(`[mapApiServices] Reverse geocoding failed: ${data?.status || 'Unknown status'}`);
+      return null;
+    }
+  } catch (error) {
+    console.error("[mapApiServices] Error in reverse geocoding:", error);
+    return null;
+  }
+}
+
 const mapApiService = {
   geocode,
   decodeGooglePolyline,
@@ -237,6 +263,7 @@ const mapApiService = {
   getDrivingDirections,
   findNearestPointOnRoute,
   regionFromCoordinates: mapRegionFromCoordinates,
+  reverseGeocode,
 };
 
 export default mapApiService;
