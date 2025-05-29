@@ -110,7 +110,22 @@ export default function LocationPickerModal({
         };
         
         setSelectedLocation(coordinate);
-        setSelectedAddress('My Current Location');
+        
+        // Perform reverse geocoding to get the actual address
+        setIsLoadingAddress(true);
+        try {
+          const result = await mapApiService.reverseGeocode(coordinate);
+          if (result) {
+            setSelectedAddress(result.formattedAddress);
+          } else {
+            setSelectedAddress(`${coordinate.latitude.toFixed(6)}, ${coordinate.longitude.toFixed(6)}`);
+          }
+        } catch (error) {
+          console.warn('Reverse geocoding failed:', error);
+          setSelectedAddress(`${coordinate.latitude.toFixed(6)}, ${coordinate.longitude.toFixed(6)}`);
+        } finally {
+          setIsLoadingAddress(false);
+        }
         
         const newRegion = {
           ...coordinate,
