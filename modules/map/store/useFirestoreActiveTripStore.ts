@@ -1,5 +1,8 @@
 import { create } from 'zustand';
-import { FirestoreTrip, FirestoreTripStep, firestoreTripService } from '../../../services/firestoreTripService';
+import { 
+  firestoreTripService, 
+  FirestoreTrip 
+} from '@/services/firestoreTripService';
 import { PlannedTripLeg } from '../utils/routeTypes';
 
 interface ActiveTripState {
@@ -9,14 +12,16 @@ interface ActiveTripState {
   
   // Actions
   startTrip: (
-    startLocation: { name: string; latitude: number; longitude: number },
-    endLocation: { name: string; latitude: number; longitude: number },
+    startLocation: { name: string; latitude: number; longitude: number; placeId?: string },
+    endLocation: { name: string; latitude: number; longitude: number; placeId?: string },
     selectedRouteIndex: number,
     tripLegs: PlannedTripLeg[]
   ) => Promise<string | null>;
   
   completeCurrentStep: () => Promise<boolean>;
   cancelActiveTrip: () => Promise<boolean>;
+  addTripRating: (rating: number, notes?: string) => Promise<boolean>;
+  updateTripTags: (tags: string[]) => Promise<boolean>;
   setActiveTrip: (trip: FirestoreTrip | null) => void;
   clearActiveTrip: () => void;
   
@@ -24,21 +29,29 @@ interface ActiveTripState {
   subscribeToActiveTrip: (tripId: string) => void;
   unsubscribeFromActiveTrip: () => void;
   
-  // Check if trip is active
+  // Utilities
   isActiveTrip: () => boolean;
+  getCurrentStep: () => any | null;
+  getProgressPercentage: () => number;
 }
 
-export const useActiveTripStore = create<ActiveTripState>((set, get) => {
+export const useFirestoreActiveTripStore = create<ActiveTripState>((set, get) => {
   let unsubscribe: (() => void) | null = null;
   
   return {
     activeTrip: null,
     isLoading: false,
     error: null,
-      startTrip: async (startLocation, endLocation, selectedRouteIndex, tripLegs) => {
+    
+    startTrip: async (startLocation, endLocation, selectedRouteIndex, tripLegs) => {
       set({ isLoading: true, error: null });
       try {
-        const tripId = await firestoreTripService.createTrip(startLocation, endLocation, selectedRouteIndex, tripLegs);
+        const tripId = await firestoreTripService.createTrip(
+          startLocation, 
+          endLocation, 
+          selectedRouteIndex, 
+          tripLegs
+        );
         
         if (tripId) {
           // Subscribe to updates for this trip
@@ -57,7 +70,8 @@ export const useActiveTripStore = create<ActiveTripState>((set, get) => {
         return null;
       }
     },
-      completeCurrentStep: async () => {
+    
+    completeCurrentStep: async () => {
       const { activeTrip } = get();
       if (!activeTrip) {
         set({ error: 'No active trip found' });
@@ -66,7 +80,7 @@ export const useActiveTripStore = create<ActiveTripState>((set, get) => {
       
       set({ isLoading: true, error: null });
       
-      const currentStep = activeTrip.steps.find((step: FirestoreTripStep) => step.status === 'active');
+      const currentStep = activeTrip.steps.find(step => step.status === 'active');
       if (!currentStep) {
         set({ 
           error: 'No active step found in this trip',
@@ -84,7 +98,8 @@ export const useActiveTripStore = create<ActiveTripState>((set, get) => {
       
       return success;
     },
-      cancelActiveTrip: async () => {
+    
+    cancelActiveTrip: async () => {
       const { activeTrip } = get();
       if (!activeTrip) {
         set({ error: 'No active trip found' });
@@ -95,7 +110,7 @@ export const useActiveTripStore = create<ActiveTripState>((set, get) => {
       const success = await firestoreTripService.cancelTrip(activeTrip.id!);
       
       if (success) {
-        // The subscription will update the state
+        // The subscription will update the state automatically
       } else {
         set({ 
           error: 'Failed to cancel trip',
@@ -104,6 +119,44 @@ export const useActiveTripStore = create<ActiveTripState>((set, get) => {
       }
       
       return success;
+    },
+
+    addTripRating: async (rating: number, notes?: string) => {
+      const { activeTrip } = get();
+      if (!activeTrip) {
+        set({ error: 'No active trip found' });
+        return false;
+      }
+
+      try {
+        const success = await firestoreTripService.updateTripFeedback(activeTrip.id!, rating, notes);
+        if (!success) {
+          set({ error: 'Failed to add trip rating' });
+        }
+        return success;
+      } catch (error: any) {
+        set({ error: error.message || 'Failed to add trip rating' });
+        return false;
+      }
+    },
+
+    updateTripTags: async (tags: string[]) => {
+      const { activeTrip } = get();
+      if (!activeTrip) {
+        set({ error: 'No active trip found' });
+        return false;
+      }
+
+      try {
+        const success = await firestoreTripService.updateTripTags(activeTrip.id!, tags);
+        if (!success) {
+          set({ error: 'Failed to update trip tags' });
+        }
+        return success;
+      } catch (error: any) {
+        set({ error: error.message || 'Failed to update trip tags' });
+        return false;
+      }
     },
     
     setActiveTrip: (trip) => {
@@ -118,12 +171,13 @@ export const useActiveTripStore = create<ActiveTripState>((set, get) => {
         error: null
       });
     },
-      subscribeToActiveTrip: (tripId) => {
+    
+    subscribeToActiveTrip: (tripId) => {
       // Clean up any existing subscription
       get().unsubscribeFromActiveTrip();
       
       // Create new subscription
-      unsubscribe = firestoreTripService.subscribeToTrip(tripId, (trip: FirestoreTrip | null) => {
+      unsubscribe = firestoreTripService.subscribeToTrip(tripId, (trip) => {
         set({ activeTrip: trip });
       });
     },
@@ -138,6 +192,23 @@ export const useActiveTripStore = create<ActiveTripState>((set, get) => {
     isActiveTrip: () => {
       const { activeTrip } = get();
       return !!(activeTrip && activeTrip.status === 'active');
+    },
+
+    getCurrentStep: () => {
+      const { activeTrip } = get();
+      if (!activeTrip) return null;
+      
+      return activeTrip.steps.find(step => step.status === 'active') || null;
+    },
+
+    getProgressPercentage: () => {
+      const { activeTrip } = get();
+      if (!activeTrip) return 0;
+      
+      const completedSteps = activeTrip.steps.filter(step => step.status === 'completed').length;
+      const totalSteps = activeTrip.steps.length;
+      
+      return totalSteps > 0 ? (completedSteps / totalSteps) * 100 : 0;
     }
   };
 });

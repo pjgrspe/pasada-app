@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '../../../hooks/useTheme';
-import { useTripStore, Trip } from '@/modules/map/store/useTripStore';
+import { useFirestoreTripStore, Trip } from '@/modules/trips/store/useFirestoreTripStore';
 import Loader from '../../../components/Loader';
 import Icon from 'react-native-vector-icons/Ionicons';
 
@@ -29,6 +29,30 @@ const TripListItem = ({ item }: { item: Trip }) => {
         }
     };
 
+    // Format the trip data for display
+    const formatDate = (timestamp: any) => {
+        if (!timestamp) return 'N/A';
+        const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+        return date.toLocaleDateString();
+    };
+
+    const formatTime = (timestamp: any) => {
+        if (!timestamp) return 'N/A';
+        const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    };
+
+    const formatDistance = (distance: number) => {
+        if (!distance) return 'N/A';
+        return `${(distance / 1000).toFixed(1)} km`;
+    };
+
+    const formatDuration = (duration: number) => {
+        if (!duration) return 'N/A';
+        const minutes = Math.round(duration / 60);
+        return `${minutes} min`;
+    };
+
     return (
         <TouchableOpacity
             style={[styles.itemContainer, {
@@ -42,23 +66,23 @@ const TripListItem = ({ item }: { item: Trip }) => {
             {/* Status indicator */}
             <View style={[styles.statusIndicator, { backgroundColor: getStatusColor() }]} />
             
-            <View style={styles.itemContent}>
-                <View style={styles.locationRow}>
+            <View style={styles.itemContent}>                <View style={styles.locationRow}>
                     <Text style={[styles.itemTitle, { color: colors.text }]} numberOfLines={1} ellipsizeMode="tail">
-                        {item.startLocation}
+                        {item.startLocation || 'Unknown Start'}
                     </Text>
                     <Icon name="chevron-forward" size={20} color={colors.primary} style={styles.chevron} />
                     <Text style={[styles.itemTitle, { color: colors.text }]} numberOfLines={1} ellipsizeMode="tail">
-                        {item.endLocation}
+                        {item.endLocation || 'Unknown End'}
                     </Text>
                 </View>
 
                 <Text style={[styles.itemSubtitle, { color: colors.text, opacity: 0.75 }]}>
-                    {item.date} | {item.startTime}–{item.endTime}
-                </Text>
-
-                <Text style={[styles.itemDetails, { color: colors.text, opacity: 0.6 }]}>
-                    {item.distance} • {item.duration.replace('m', '')} min
+                    {formatDate(item.startTime)} | {formatTime(item.startTime)}–{item.endTime ? formatTime(item.endTime) : 'In progress'}
+                </Text>                <Text style={[styles.itemDetails, { color: colors.text, opacity: 0.6 }]}>
+                    {formatDistance(item.totalDistance || 0)} • {formatDuration(item.actualDuration || item.estimatedDuration || 0)}
+                    {item.rating && (
+                        <Text style={{ color: colors.primary }}> • ⭐ {item.rating}</Text>
+                    )}
                 </Text>
             </View>
         </TouchableOpacity>
@@ -67,26 +91,30 @@ const TripListItem = ({ item }: { item: Trip }) => {
 
 const TripListScreen = () => {
     const { colors } = useTheme();
-    const { trips, isLoading, error, fetchTrips } = useTripStore();
+    const { trips, isLoading, error, fetchTrips } = useFirestoreTripStore();
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'completed' | 'cancelled'>('all');
 
     useEffect(() => {
-        if (trips.length === 0 && !isLoading && !error) {
-            fetchTrips();
-        }
-    }, [fetchTrips, trips.length, isLoading, error]);
+        // Always fetch trips when component mounts
+        fetchTrips();
+    }, []);
 
     const filteredTrips = useMemo(() =>
-        trips.filter(trip =>
+        trips.filter(trip => {
             // Apply text search
-            (trip.startLocation.toLowerCase().includes(searchQuery.toLowerCase()) ||
-             trip.endLocation.toLowerCase().includes(searchQuery.toLowerCase()) ||
-             trip.date.includes(searchQuery)) &&
+            const searchLower = searchQuery.toLowerCase();
+            const matchesSearch = !searchQuery || 
+                trip.startLocation?.toLowerCase().includes(searchLower) ||
+                trip.endLocation?.toLowerCase().includes(searchLower);
+            
             // Apply status filter
-            (statusFilter === 'all' || trip.status === statusFilter)
-        ), [trips, searchQuery, statusFilter]);
+            const matchesStatus = statusFilter === 'all' || trip.status === statusFilter;
+            
+            return matchesSearch && matchesStatus;
+        }), [trips, searchQuery, statusFilter]);
 
+    // Loading state - only show if we're loading AND have no trips yet
     if (isLoading && trips.length === 0) {
         return (
             <View style={[styles.centered, { backgroundColor: colors.background }]}>
@@ -95,12 +123,24 @@ const TripListScreen = () => {
         );
     }
 
+    // Error state - only show if there's an error AND no trips loaded
     if (error && trips.length === 0) {
         return (
             <View style={[styles.centered, { backgroundColor: colors.background }]}>
-                <Text style={{ color: colors.error, fontSize: 16 }}>Error loading trips: {error}</Text>
-                 <TouchableOpacity onPress={() => fetchTrips()} style={{ marginTop: 10, padding: 10, backgroundColor: colors.primary, borderRadius: 5}}>
-                    <Text style={{color: colors.headerText}}>Retry</Text>
+                <Icon name="alert-circle-outline" size={60} color={colors.error} />
+                <Text style={[styles.errorText, { color: colors.error }]}>
+                    Error loading trips
+                </Text>
+                <Text style={[styles.errorSubtext, { color: colors.text, opacity: 0.7 }]}>
+                    {error}
+                </Text>
+                <TouchableOpacity 
+                    onPress={() => fetchTrips()} 
+                    style={[styles.retryButton, { backgroundColor: colors.primary }]}
+                >
+                    <Text style={[styles.retryText, { color: colors.headerText }]}>
+                        Retry
+                    </Text>
                 </TouchableOpacity>
             </View>
         );
@@ -108,22 +148,18 @@ const TripListScreen = () => {
 
     return (
         <View style={[styles.container, { backgroundColor: colors.background }]}>
+            {/* Search Input */}
             <TextInput
                 style={[styles.searchInput, {
                     backgroundColor: colors.card,
                     color: colors.text,
                     borderColor: colors.border,
-                    shadowColor: '#000',
                 }]}
-                placeholder="Search by location or date..."
+                placeholder="Search by location..."
                 placeholderTextColor={colors.text + '88'}
                 value={searchQuery}
                 onChangeText={setSearchQuery}
                 clearButtonMode="while-editing"
-                keyboardType="default"
-                autoCapitalize="words"
-                accessibilityLabel="Search trips"
-                accessibilityHint="Filter trips by start or end location, or date"
             />
 
             {/* Status filter tabs */}
@@ -133,7 +169,10 @@ const TripListScreen = () => {
                         key={status}
                         style={[
                             styles.filterTab,
-                            statusFilter === status && { backgroundColor: colors.primary + '20', borderColor: colors.primary }
+                            statusFilter === status && { 
+                                backgroundColor: colors.primary + '20', 
+                                borderColor: colors.primary 
+                            }
                         ]}
                         onPress={() => setStatusFilter(status)}
                     >
@@ -149,23 +188,32 @@ const TripListScreen = () => {
                 ))}
             </View>
 
+            {/* Trip List */}
             <FlatList
                 data={filteredTrips}
                 renderItem={({ item }) => <TripListItem item={item} />}
                 keyExtractor={(item) => item.id}
                 contentContainerStyle={filteredTrips.length === 0 ? styles.emptyListContent : styles.listContent}
-                ListEmptyComponent={
-                     !isLoading ? (
-                        <View style={styles.emptyContainer}>
-                            <Icon name="file-tray-outline" size={60} color={colors.text + '88'} />
-                            <Text style={[styles.emptyText, { color: colors.text }]}>
-                                No trips match your search.
-                            </Text>
-                        </View>
-                    ) : null
-                }
+                ListEmptyComponent={() => (
+                    <View style={styles.emptyContainer}>
+                        <Icon name="map-outline" size={80} color={colors.text + '40'} />
+                        <Text style={[styles.emptyText, { color: colors.text }]}>
+                            {searchQuery || statusFilter !== 'all' 
+                                ? 'No trips match your search' 
+                                : 'No trips yet'
+                            }
+                        </Text>
+                        <Text style={[styles.emptySubtext, { color: colors.text, opacity: 0.6 }]}>
+                            {searchQuery || statusFilter !== 'all' 
+                                ? 'Try adjusting your filters' 
+                                : 'Start a trip from the home screen to see it here'
+                            }
+                        </Text>
+                    </View>
+                )}
                 showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
+                refreshing={isLoading}
+                onRefresh={fetchTrips}
             />
         </View>
     );
@@ -179,6 +227,7 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
+        paddingHorizontal: 20,
     },
     searchInput: {
         marginHorizontal: 16,
@@ -251,12 +300,20 @@ const styles = StyleSheet.create({
     emptyContainer: {
         alignItems: 'center',
         justifyContent: 'center',
-        paddingTop: 60,
+        paddingTop: 100,
+        paddingHorizontal: 20,
     },
     emptyText: {
-        fontSize: 16,
-        marginTop: 12,
+        fontSize: 18,
+        fontWeight: '600',
+        marginTop: 16,
         textAlign: 'center',
+    },
+    emptySubtext: {
+        fontSize: 14,
+        marginTop: 8,
+        textAlign: 'center',
+        lineHeight: 20,
     },
     listContent: {
         paddingTop: 8,
@@ -264,6 +321,27 @@ const styles = StyleSheet.create({
     },
     emptyListContent: {
         flexGrow: 1,
+    },
+    errorText: {
+        fontSize: 18,
+        fontWeight: '600',
+        marginTop: 16,
+        textAlign: 'center',
+    },
+    errorSubtext: {
+        fontSize: 14,
+        marginTop: 8,
+        textAlign: 'center',
+        marginBottom: 20,
+    },
+    retryButton: {
+        paddingHorizontal: 24,
+        paddingVertical: 12,
+        borderRadius: 8,
+    },
+    retryText: {
+        fontSize: 16,
+        fontWeight: '600',
     },
 });
 

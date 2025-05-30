@@ -36,10 +36,10 @@ export default function TabLayout() {
             <Tabs.Screen
                 name="index"
                 options={{
-                    title: 'EmpowerJob', // Tab bar title
+                    title: 'Pasada', // Tab bar title
                     header: () => (
                         <ScreenHeader
-                            title="EmpowerJob" // Header title
+                            title="Pasada" // Header title
                             showLogo={true} // Set to true to show the logo
                             logoSource={logo} // Pass the imported logo source
                             rightIconName="notifications-outline"

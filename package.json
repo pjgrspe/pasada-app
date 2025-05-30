@@ -1,13 +1,14 @@
 {
   "name": "pasada-app",
   "main": "expo-router/entry",
-  "version": "1.0.0",
-  "scripts": {
+  "version": "1.0.0",  "scripts": {
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "test": "jest --watchAll"
+    "test": "jest --watchAll",
+    "migrate": "node scripts/runMigration.js",
+    "migrate:user": "node scripts/runMigration.js"
   },
   "jest": {
     "preset": "jest-expo"

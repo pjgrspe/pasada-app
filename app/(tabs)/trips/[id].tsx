@@ -1,5 +1,5 @@
 // app/(tabs)/trips/[id].tsx
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Marker } from 'react-native-maps';
@@ -12,14 +12,43 @@ import { regionFromCoordinates } from '../../../modules/map/utils/mapHelpers';
 
 import { useTheme } from '../../../hooks/useTheme';
 import Loader from '../../../components/Loader';
-import { useTripStore } from '../../../modules/map/store/useTripStore';
+import { useFirestoreTripStore } from '@/modules/trips/store/useFirestoreTripStore';
 
 const TripDetailsScreen = () => {
     const { id } = useLocalSearchParams<{ id: string }>();
     const { colors } = useTheme();
-    const { trips, isLoading: tripsIsLoading } = useTripStore();
+    const { getTripById } = useFirestoreTripStore();
+    const [trip, setTrip] = useState<any>(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
-    const trip = trips.find(t => t.id === id);
+    useEffect(() => {
+        const loadTrip = async () => {
+            if (!id) {
+                setError('No trip ID provided');
+                setIsLoading(false);
+                return;
+            }
+
+            try {
+                setIsLoading(true);
+                setError(null);
+                const tripData = await getTripById(id);
+                if (tripData) {
+                    setTrip(tripData);
+                } else {
+                    setError('Trip not found');
+                }
+            } catch (err) {
+                console.error('Error loading trip:', err);
+                setError('Failed to load trip details');
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        loadTrip();
+    }, [id, getTripById]);
 
     const dynamicStyles = StyleSheet.create({
         background: { backgroundColor: colors.background },
@@ -36,7 +65,35 @@ const TripDetailsScreen = () => {
         statusCancelled: { color: colors.error },
     });
 
-    if (tripsIsLoading && !trip) {
+    // Format helper functions
+    const formatTimestamp = (timestamp: any, format: 'date' | 'time' = 'date') => {
+        if (!timestamp) return 'N/A';
+        const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+        
+        if (format === 'time') {
+            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+        return date.toLocaleDateString();
+    };
+
+    const formatDistance = (distance: number) => {
+        if (!distance) return 'N/A';
+        return `${(distance / 1000).toFixed(1)} km`;
+    };
+
+    const formatDuration = (duration: number) => {
+        if (!duration) return 'N/A';
+        const minutes = Math.round(duration / 60);
+        const hours = Math.floor(minutes / 60);
+        const remainingMinutes = minutes % 60;
+        
+        if (hours > 0) {
+            return `${hours}h ${remainingMinutes}m`;
+        }
+        return `${minutes}m`;
+    };
+
+    if (isLoading) {
         return (
             <View style={[styles.centered, dynamicStyles.background]}>
                 <Loader text="Loading trip details..." />
@@ -44,16 +101,21 @@ const TripDetailsScreen = () => {
         );
     }
 
-    if (!trip) {
+    if (error || !trip) {
         return (
             <View style={[styles.centered, dynamicStyles.background]}>
-                <Text style={[styles.errorText, dynamicStyles.error]}>Trip not found.</Text>
+                <Ionicons name="alert-circle-outline" size={60} color={colors.error} />
+                <Text style={[styles.errorText, dynamicStyles.error]}>
+                    {error || 'Trip not found'}
+                </Text>
             </View>
         );
     }
 
-    const routeCoordinates = trip.routeCoordinates ?? [];
-    const initialRegion = routeCoordinates.length
+    // Create route coordinates from trip steps
+    const routeCoordinates = trip.steps?.flatMap((step: any) => step.coordinates || []) || [];
+    
+    const initialRegion = routeCoordinates.length > 0
         ? regionFromCoordinates(routeCoordinates, 0.2)
         : {
             latitude: 14.8433,
@@ -74,18 +136,19 @@ const TripDetailsScreen = () => {
     return (
         <ScrollView style={[styles.container, dynamicStyles.background]}>
             <Text style={[styles.title, dynamicStyles.text]}>
-                {trip.startLocation ?? 'N/A'}{' '}
+                {trip.startLocation?.name || 'Unknown Start'}{' '}
                 <Ionicons name="chevron-forward" size={20} color={colors.primary} style={styles.chevron} />{' '}
-                {trip.endLocation ?? 'N/A'}
+                {trip.endLocation?.name || 'Unknown End'}
             </Text>
             
             {/* Status Badge */}
             <View style={[styles.statusBadge, { backgroundColor: colors.card }]}>
                 <Text style={[styles.statusText, getStatusStyle(trip.status)]}>
-                    {trip.status?.toUpperCase()}
+                    {trip.status?.toUpperCase() || 'UNKNOWN'}
                 </Text>
             </View>
 
+            {/* Map */}
             <View style={[styles.mapContainer, dynamicStyles.card]}>
                 <MapViewComponent initialRegion={initialRegion}>
                     {routeCoordinates.length > 0 && (
@@ -102,18 +165,68 @@ const TripDetailsScreen = () => {
                 </MapViewComponent>
             </View>
 
+            {/* Location Details */}
             <View style={[styles.detailCard, dynamicStyles.card]}>
-                <Detail label="Trip ID" value={trip.id ?? 'N/A'} icon="barcode" textStyle={dynamicStyles.text} />
-                <Detail label="Start Location" value={trip.startLocation ?? 'N/A'} icon="location" textStyle={dynamicStyles.text} />
-                <Detail label="End Location" value={trip.endLocation ?? 'N/A'} icon="flag" textStyle={dynamicStyles.text} />
+                <Detail label="Trip ID" value={trip.id || 'N/A'} icon="barcode" textStyle={dynamicStyles.text} />
+                <Detail label="Start Location" value={trip.startLocation?.name || 'N/A'} icon="location" textStyle={dynamicStyles.text} />
+                <Detail label="End Location" value={trip.endLocation?.name || 'N/A'} icon="flag" textStyle={dynamicStyles.text} />
             </View>
 
+            {/* Trip Details */}
             <View style={[styles.detailCard, dynamicStyles.card]}>
-                <Detail label="Date" value={trip.date ?? 'N/A'} icon="calendar" textStyle={dynamicStyles.text} />
-                <Detail label="Time" value={`${trip.startTime ?? 'N/A'} – ${trip.endTime ?? 'In progress'}`} icon="time" textStyle={dynamicStyles.text} />
-                <Detail label="Distance" value={trip.distance ?? 'N/A'} icon="walk" textStyle={dynamicStyles.text} />
-                <Detail label="Duration" value={trip.duration ?? 'N/A'} icon="hourglass" textStyle={dynamicStyles.text} />
+                <Detail label="Date" value={formatTimestamp(trip.startTime)} icon="calendar" textStyle={dynamicStyles.text} />
+                <Detail 
+                    label="Time" 
+                    value={`${formatTimestamp(trip.startTime, 'time')} – ${trip.endTime ? formatTimestamp(trip.endTime, 'time') : 'In progress'}`} 
+                    icon="time" 
+                    textStyle={dynamicStyles.text} 
+                />
+                <Detail label="Distance" value={formatDistance(trip.totalDistance)} icon="walk" textStyle={dynamicStyles.text} />
+                <Detail 
+                    label="Duration" 
+                    value={formatDuration(trip.actualDuration || trip.estimatedDuration)} 
+                    icon="hourglass" 
+                    textStyle={dynamicStyles.text} 
+                />
             </View>
+
+            {/* Additional Details (if available) */}
+            {(trip.rating || trip.totalFare || trip.notes || (trip.tags && trip.tags.length > 0)) && (
+                <View style={[styles.detailCard, dynamicStyles.card]}>
+                    {trip.rating && (
+                        <Detail 
+                            label="Rating" 
+                            value={`${'⭐'.repeat(trip.rating)} (${trip.rating}/5)`} 
+                            icon="star" 
+                            textStyle={dynamicStyles.text} 
+                        />
+                    )}
+                    {trip.totalFare && (
+                        <Detail 
+                            label="Total Fare" 
+                            value={`₱${trip.totalFare}`} 
+                            icon="cash" 
+                            textStyle={dynamicStyles.text} 
+                        />
+                    )}
+                    {trip.tags && trip.tags.length > 0 && (
+                        <Detail 
+                            label="Tags" 
+                            value={trip.tags.join(', ')} 
+                            icon="pricetag" 
+                            textStyle={dynamicStyles.text} 
+                        />
+                    )}
+                    {trip.notes && (
+                        <Detail 
+                            label="Notes" 
+                            value={trip.notes} 
+                            icon="document-text" 
+                            textStyle={dynamicStyles.text} 
+                        />
+                    )}
+                </View>
+            )}
         </ScrollView>
     );
 };
@@ -140,7 +253,12 @@ const Detail = ({
 
 const styles = StyleSheet.create({
     container: { flex: 1 },
-    centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    centered: { 
+        flex: 1, 
+        justifyContent: 'center', 
+        alignItems: 'center',
+        paddingHorizontal: 20,
+    },
     title: {
         fontSize: 22,
         fontWeight: '700',
@@ -197,9 +315,10 @@ const styles = StyleSheet.create({
         fontWeight: '600',
     },
     errorText: {
-        fontSize: 16,
+        fontSize: 18,
+        fontWeight: '600',
+        marginTop: 16,
         textAlign: 'center',
-        marginTop: 20,
     },
     chevron: {
         marginHorizontal: 4,

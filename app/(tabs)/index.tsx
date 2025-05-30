@@ -36,7 +36,7 @@ import mapApiService from '@/modules/map/services/mapApiServices';
 import { Coordinate, PlannedTripLeg } from '@/modules/map/utils/routeTypes';
 
 import { useTheme } from '@/hooks/useTheme';
-import { useTripStore } from '@/modules/map/store/useTripStore';
+import { useFirestoreTripStore } from '@/modules/trips/store/useFirestoreTripStore';
 import * as DebugTestTrip from '@/modules/map/utils/DebugTestTrip';
 import { Text } from '@/components/Themed';
 import { DEBUG_MODE_ENABLED } from '@/modules/map/constants/tripPlanningConstants';
@@ -73,7 +73,7 @@ const getTripSummaryForTab = (tripLegs: PlannedTripLeg[]): string => {
 export default function DashboardScreen() {
     const router = useRouter();
     const { colors, isDarkMode } = useTheme();
-    const { trips, isLoading: tripsIsLoading, error: tripsError, fetchTrips, getRecentTrips } = useTripStore();
+    const { trips, isLoading: tripsIsLoading, error: tripsError, fetchTrips, getRecentTrips } = useFirestoreTripStore();
     const recentTrips = getRecentTrips(5);
 
     const [startPointQuery, setStartPointQuery] = useState('');
@@ -553,27 +553,82 @@ export default function DashboardScreen() {
             case 'recent_trips':
                  return (
                     <View style={[styles.previousRoutesContainer, dynamicStyles.previousRoutesContainer]}>
-                         <View style={styles.previousHeader}>
+                        <View style={styles.previousHeader}>
                             <Text style={[styles.previousTitle, dynamicStyles.previousTitle]}>Recent Trips</Text>
                             <TouchableOpacity style={[styles.arrowButton, dynamicStyles.arrowButton]} onPress={() => router.push('/(tabs)/trips')}>
                                 <Ionicons name="arrow-forward-outline" size={22} color={dynamicStyles.arrowIcon.color} />
                             </TouchableOpacity>
                         </View>
-                        {tripsIsLoading && item.data.length === 0 ? <Loader size="small" color={colors.primary}/> : null}
-                        {item.data.length > 0 ? (
-                            <FlatList
-                                data={item.data} // recentTrips
-                                horizontal
-                                showsHorizontalScrollIndicator={false}
-                                keyExtractor={(tripItem) => tripItem.id}
-                                renderItem={({ item: tripItem }) => (
-                                    <RouteCard startTime={tripItem.startTime} endTime={tripItem.endTime} startLocation={tripItem.startLocation} endLocation={tripItem.endLocation} onPress={() => handleRouteCardPress(tripItem.id)} />
-                                )}
-                                contentContainerStyle={{ paddingHorizontal: 15, paddingVertical: 10 }}
-                            />
-                        ) : (
-                           !tripsIsLoading && <Text style={{ paddingHorizontal: 20, color: colors.text, opacity: 0.7, paddingBottom: 10 }}>No recent trips yet.</Text>
-                        )}
+
+                        {/* BETTER STATE FLOW LOGIC APPLIED HERE */}
+                        {(() => {
+                            // Loading state - only show if we're loading AND have no trips yet
+                            if (tripsIsLoading && trips.length === 0) {
+                                return (
+                                    <View style={styles.loadingContainer}>
+                                        <ActivityIndicator size="small" color={colors.primary} />
+                                        <Text style={[styles.loadingText, { color: colors.text + '80' }]}>
+                                            Loading recent trips...
+                                        </Text>
+                                    </View>
+                                );
+                            }
+
+                            // Error state - only show if there's an error AND no trips loaded
+                            if (tripsError && trips.length === 0) {
+                                return (
+                                    <View style={styles.emptyContainer}>
+                                        <Ionicons name="alert-circle-outline" size={32} color={colors.error} />
+                                        <Text style={[styles.emptyText, { color: colors.error }]}>
+                                            Error loading trips
+                                        </Text>
+                                        <TouchableOpacity 
+                                            onPress={() => fetchTrips()} 
+                                            style={[styles.retryButton, { backgroundColor: colors.primary }]}
+                                        >
+                                            <Text style={[styles.retryText, { color: colors.headerText }]}>
+                                                Retry
+                                            </Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                );
+                            }
+
+                            // Empty state - when no recent trips are found
+                            if (item.data.length === 0) {
+                                return (
+                                    <View style={styles.emptyContainer}>
+                                        <Ionicons name="map-outline" size={32} color={colors.text + '40'} />
+                                        <Text style={[styles.emptyText, { color: colors.text }]}>
+                                            No recent trips
+                                        </Text>
+                                        <Text style={[styles.emptySubtext, { color: colors.text + '80' }]}>
+                                            Start a trip to see your history here
+                                        </Text>
+                                    </View>
+                                );
+                            }
+
+                            // Success state - show the trips list
+                            return (
+                                <FlatList
+                                    data={item.data} // recentTrips
+                                    horizontal
+                                    showsHorizontalScrollIndicator={false}
+                                    keyExtractor={(tripItem) => tripItem.id}
+                                    renderItem={({ item: tripItem }) => (
+                                        <RouteCard 
+                                            startTime={tripItem.startTime} 
+                                            endTime={tripItem.endTime} 
+                                            startLocation={tripItem.startLocation} 
+                                            endLocation={tripItem.endLocation} 
+                                            onPress={() => handleRouteCardPress(tripItem.id)} 
+                                        />
+                                    )}
+                                    contentContainerStyle={{ paddingHorizontal: 15, paddingVertical: 10 }}
+                                />
+                            );
+                        })()}
                     </View>
                 );
             default:
@@ -808,7 +863,51 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
     },
     chooseOptionButtonText: {
+        paddingVertical: 12,
+        borderRadius: 8,
+        marginHorizontal: 16,
+        marginTop: 8,
+        marginBottom: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
         fontSize: 16,
         fontWeight: '600',
+    },
+    // New styles for better empty/loading/error states
+    loadingContainer: {
+        alignItems: 'center',
+        paddingVertical: 20,
+        paddingHorizontal: 20,
+    },
+    loadingText: {
+        fontSize: 14,
+        marginTop: 8,
+        textAlign: 'center',
+    },
+    emptyContainer: {
+        alignItems: 'center',
+        paddingVertical: 24,
+        paddingHorizontal: 20,
+    },
+    emptyText: {
+        fontSize: 16,
+        fontWeight: '500',
+        marginTop: 8,
+        textAlign: 'center',
+    },
+    emptySubtext: {
+        fontSize: 14,
+        marginTop: 4,
+        textAlign: 'center',
+    },
+    retryButton: {
+        marginTop: 12,
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 6,
+    },
+    retryText: {
+        fontSize: 14,
+        fontWeight: '500',
     },
 });
