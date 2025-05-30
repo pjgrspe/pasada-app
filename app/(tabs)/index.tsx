@@ -45,6 +45,7 @@ import { DEBUG_MODE_ENABLED } from '@/modules/map/constants/tripPlanningConstant
 import { useActiveTripStore } from '@/modules/map/store/useActiveTripStore';
 import { ActiveTripPanel } from '@/modules/map/components/ActiveTripPanel';
 import { useAuth } from '@/modules/auth/hooks/useAuth'; // Import your auth hook
+import { CheckpointSilver, CheckpointViolet, Marisol } from '@/modules/map/utils/jeepRoutes';
 
 const initialMapRegion: Region = {
     latitude: 15.1446, 
@@ -86,9 +87,15 @@ export default function DashboardScreen() {
     // Add new state for location picker modal
     const [locationPickerVisible, setLocationPickerVisible] = useState(false);
     const [locationPickerType, setLocationPickerType] = useState<'start' | 'destination'>('start');
-    
-    // Add state for favorite modal
+      // Add state for favorite modal
     const [favoriteModalVisible, setFavoriteModalVisible] = useState(false);
+
+    // Add state for jeepney route visibility
+    const [jeepneyRouteVisibility, setJeepneyRouteVisibility] = useState({
+        'checkpoint-silver': false,
+        'checkpoint-violet': false,
+        'marisol': false
+    });
 
     const { mapRef, setMapRef, animateToRegion, onRegionChangeComplete } = useMap();
     const { currentLocation, getSingleLocation: fetchDeviceLocation, locationPermissionStatus } = useLocationTracking();
@@ -105,13 +112,47 @@ export default function DashboardScreen() {
 
     const {
         markers: storeMarkers,
-        routes: mapDisplayRoutes,
-        currentRegion: storeMapRegion,
+        routes: mapDisplayRoutes,        currentRegion: storeMapRegion,
         setCurrentRegion: setStoreCurrentRegion,
         isLoading: mapIsLoading,
         loadingStatus, // Add this
-    } = useMapStore();    const { activeTrip, startTrip } = useActiveTripStore();
+    } = useMapStore();
+    
+    const { activeTrip, startTrip } = useActiveTripStore();
     const authState = useAuth(); // Assuming you have an auth hook
+
+    // Create enhanced map display routes that include visible jeepney routes
+    const enhancedMapDisplayRoutes = React.useMemo(() => {
+        const jeepneyRoutes: MapDisplayRoute[] = [];
+          if (jeepneyRouteVisibility['checkpoint-silver']) {
+            jeepneyRoutes.push({
+                id: 'jeepney-checkpoint-silver',
+                coordinates: CheckpointSilver.coordinates.map(coord => ({ latitude: coord.latitude, longitude: coord.longitude })),
+                color: CheckpointSilver.color || '#c2cad8',
+                routeType: 'jeepney'
+            });
+        }
+        
+        if (jeepneyRouteVisibility['checkpoint-violet']) {
+            jeepneyRoutes.push({
+                id: 'jeepney-checkpoint-violet',
+                coordinates: CheckpointViolet.coordinates.map(coord => ({ latitude: coord.latitude, longitude: coord.longitude })),
+                color: CheckpointViolet.color || '#5b4dad',
+                routeType: 'jeepney'
+            });
+        }
+        
+        if (jeepneyRouteVisibility['marisol']) {
+            jeepneyRoutes.push({
+                id: 'jeepney-marisol',
+                coordinates: Marisol.coordinates.map(coord => ({ latitude: coord.latitude, longitude: coord.longitude })),
+                color: Marisol.color || '#0abc27',
+                routeType: 'jeepney'
+            });
+        }
+        
+        return [...mapDisplayRoutes, ...jeepneyRoutes];
+    }, [mapDisplayRoutes, jeepneyRouteVisibility]);
 
     // Handle URL parameters from favorites navigation
     useEffect(() => {
@@ -201,12 +242,17 @@ export default function DashboardScreen() {
                 Alert.alert('Success', 'Route saved to favorites!');
             } else {
                 Alert.alert('Error', 'Failed to save favorite. Please try again.');
-            }
-        } catch (error) {
+            }        } catch (error) {
             console.error('Error saving favorite:', error);
             Alert.alert('Error', 'An unexpected error occurred while saving your favorite.');
         }
-    }, [startPointQuery, destinationQuery, currentLocation, createFavorite]);
+    }, [startPointQuery, destinationQuery, currentLocation, createFavorite]);    // Handler for toggling jeepney route visibility
+    const handleJeepneyRouteToggle = useCallback((routeId: 'checkpoint-silver' | 'checkpoint-violet' | 'marisol') => {
+        setJeepneyRouteVisibility(prev => ({
+            ...prev,
+            [routeId]: !prev[routeId]
+        }));
+    }, []);
 
     useEffect(() => {
         // ... (effect logic remains the same) ...
@@ -439,9 +485,7 @@ export default function DashboardScreen() {
                 "An unexpected error occurred while starting your trip."
             );
         }
-    };
-
-    // --- Define sections for the main FlatList ---
+    };    // --- Define sections for the main FlatList ---
     const listSections: Array<{type: string, key: string, data?: any}> = [
         { type: 'planning_inputs', key: 'planning_inputs' },
     ];
@@ -450,6 +494,9 @@ export default function DashboardScreen() {
     if (DEBUG_MODE_ENABLED) {
         listSections.push({ type: 'test_button', key: 'test_button' });
     }
+
+    // Add jeepney route toggles section
+    listSections.push({ type: 'jeepney_routes', key: 'jeepney_routes' });
 
     listSections.push({ type: 'map_view', key: 'map_view' });
 
@@ -543,6 +590,66 @@ export default function DashboardScreen() {
                             >
                                 <Ionicons name="close-circle-outline" size={18} color={colors.headerText} />
                                 <Text style={[styles.actionButtonText, {color: colors.headerText}]}>Clear</Text>
+                            </TouchableOpacity>                        </View>
+                    </View>
+                );
+            case 'jeepney_routes':
+                return (
+                    <View style={[styles.jeepneyRoutesContainer, dynamicStyles.jeepneyRoutesContainer]}>
+                        <Text style={[styles.jeepneyRoutesTitle, { color: colors.text }]}>Jeepney Routes</Text>
+                        <View style={styles.jeepneyButtonsRow}>
+                            <TouchableOpacity                                style={[
+                                    styles.jeepneyRouteButton,
+                                    { 
+                                        backgroundColor: jeepneyRouteVisibility['checkpoint-silver'] ? '#c2cad8' : colors.card,
+                                        borderColor: '#c2cad8',
+                                        borderWidth: 2
+                                    }
+                                ]}
+                                onPress={() => handleJeepneyRouteToggle('checkpoint-silver')}
+                            >
+                                <Text style={[
+                                    styles.jeepneyRouteButtonText,
+                                    { color: jeepneyRouteVisibility['checkpoint-silver'] ? '#000' : colors.text }
+                                ]}>
+                                    Silver
+                                </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[
+                                    styles.jeepneyRouteButton,
+                                    { 
+                                        backgroundColor: jeepneyRouteVisibility['checkpoint-violet'] ? '#5b4dad' : colors.card,
+                                        borderColor: '#5b4dad',
+                                        borderWidth: 2
+                                    }
+                                ]}
+                                onPress={() => handleJeepneyRouteToggle('checkpoint-violet')}
+                            >
+                                <Text style={[
+                                    styles.jeepneyRouteButtonText,
+                                    { color: jeepneyRouteVisibility['checkpoint-violet'] ? '#fff' : colors.text }
+                                ]}>
+                                    Violet
+                                </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[
+                                    styles.jeepneyRouteButton,
+                                    { 
+                                        backgroundColor: jeepneyRouteVisibility['marisol'] ? '#0abc27' : colors.card,
+                                        borderColor: '#0abc27',
+                                        borderWidth: 2
+                                    }
+                                ]}
+                                onPress={() => handleJeepneyRouteToggle('marisol')}
+                            >
+                                <Text style={[
+                                    styles.jeepneyRouteButtonText,
+                                    { color: jeepneyRouteVisibility['marisol'] ? '#fff' : colors.text }
+                                ]}>
+                                    Marisol
+                                </Text>
                             </TouchableOpacity>
                         </View>
                     </View>
@@ -561,9 +668,15 @@ export default function DashboardScreen() {
                                 <Marker key={marker.id} coordinate={marker.coordinate} title={marker.title} description={marker.description}>
                                     <MapPin type={marker.id === 'startPoint' ? 'start' : marker.id === 'destinationPoint' ? 'end' : 'generic'} color={marker.pinColor} size={marker.id === 'startPoint' || marker.id === 'destinationPoint' ? 40 : 30} />
                                 </Marker>
-                            ))}
-                            {mapDisplayRoutes.map((route: MapDisplayRoute) => (
-                                <RoutePolyline key={route.id} coordinates={route.coordinates} strokeColor={route.color} strokeWidth={route.routeType === 'walk' ? 4 : 6} lineDashPattern={route.routeType === 'walk' ? [1, 8] : undefined} zIndex={route.routeType === 'jeepney' ? 10 : 5} />
+                            ))}                            {enhancedMapDisplayRoutes.map((route: MapDisplayRoute) => (
+                                <RoutePolyline 
+                                    key={route.id} 
+                                    coordinates={route.coordinates} 
+                                    strokeColor={route.color} 
+                                    strokeWidth={route.routeType === 'walk' ? 4 : 6} 
+                                    lineDashPattern={route.routeType === 'walk' ? [1, 8] : route.routeType === 'jeepney' ? [5, 10] : undefined} 
+                                    zIndex={route.routeType === 'jeepney' ? 10 : 5} 
+                                />
                             ))}
                         </MapViewComponent>
                         
@@ -756,7 +869,11 @@ export default function DashboardScreen() {
             backgroundColor: colors.inputBackground, 
             borderColor: colors.border,
             borderWidth: 1,
-            borderRadius: 12,
+            borderRadius: 12,        },
+        jeepneyRoutesContainer: { 
+            backgroundColor: colors.card,
+            borderColor: colors.border,
+            borderWidth: 1,
         },
         testButtonContainer: {
             marginVertical: 10,
@@ -873,10 +990,45 @@ const styles = StyleSheet.create({
         shadowOffset: {width: 0, height: 1},
         shadowOpacity: 0.2,
         shadowRadius: 2,
-    },
-    actionButtonText: {
+    },    actionButtonText: {
         marginLeft: 8,
         fontSize: 14,
+        fontWeight: '600',
+    },
+    jeepneyRoutesContainer: {
+        marginHorizontal: 10,
+        marginVertical: 8,
+        padding: 12,
+        borderRadius: 12,
+        elevation: 1,
+        shadowOffset: {width: 0, height: 1},
+        shadowOpacity: 0.1,
+        shadowRadius: 1,
+    },
+    jeepneyRoutesTitle: {
+        fontSize: 16,
+        fontWeight: '600',
+        marginBottom: 8,
+        textAlign: 'center',
+    },
+    jeepneyButtonsRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-around',
+        gap: 8,
+    },
+    jeepneyRouteButton: {
+        flex: 1,
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+        borderRadius: 16,
+        alignItems: 'center',
+        elevation: 1,
+        shadowOffset: {width: 0, height: 1},
+        shadowOpacity: 0.1,
+        shadowRadius: 1,
+    },
+    jeepneyRouteButtonText: {
+        fontSize: 12,
         fontWeight: '600',
     },
     mapContainer: {
