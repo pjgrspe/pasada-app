@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { Marker, Region } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 
 import RouteCard from '@/components/RouteCard';
 import Loader from '@/components/Loader';
@@ -22,6 +22,7 @@ import Loader from '@/components/Loader';
 import InstructionLegItem from '@/modules/map/components/InstructionLegItem'; // NEW IMPORT
 import LoadingStatusDisplay from '@/modules/map/components/LoadingStatusDisplay';
 import LocationPickerModal from '@/modules/map/components/LocationPickerModal'; // NEW IMPORT
+import { AddFavoriteModal } from '@/components/favorites/AddFavoriteModal';
 
 import MapViewComponent from '@/modules/map/components/MapViewComponent';
 import MapPin from '@/modules/map/components/MapPin';
@@ -37,6 +38,7 @@ import { Coordinate, PlannedTripLeg } from '@/modules/map/utils/routeTypes';
 
 import { useTheme } from '@/hooks/useTheme';
 import { useFirestoreTripStore } from '@/modules/trips/store/useFirestoreTripStore';
+import { useFavoritesStore } from '@/modules/favorites/store/useFavoritesStore';
 import * as DebugTestTrip from '@/modules/map/utils/DebugTestTrip';
 import { Text } from '@/components/Themed';
 import { DEBUG_MODE_ENABLED } from '@/modules/map/constants/tripPlanningConstants';
@@ -70,10 +72,12 @@ const getTripSummaryForTab = (tripLegs: PlannedTripLeg[]): string => {
 };
 
 
-export default function DashboardScreen() {
+export default function DashboardScreen() {    
     const router = useRouter();
+    const params = useLocalSearchParams();
     const { colors, isDarkMode } = useTheme();
     const { trips, isLoading: tripsIsLoading, error: tripsError, fetchTrips, getRecentTrips } = useFirestoreTripStore();
+    const { createFavorite } = useFavoritesStore();
     const recentTrips = getRecentTrips(5);
 
     const [startPointQuery, setStartPointQuery] = useState('');
@@ -82,6 +86,9 @@ export default function DashboardScreen() {
     // Add new state for location picker modal
     const [locationPickerVisible, setLocationPickerVisible] = useState(false);
     const [locationPickerType, setLocationPickerType] = useState<'start' | 'destination'>('start');
+    
+    // Add state for favorite modal
+    const [favoriteModalVisible, setFavoriteModalVisible] = useState(false);
 
     const { mapRef, setMapRef, animateToRegion, onRegionChangeComplete } = useMap();
     const { currentLocation, getSingleLocation: fetchDeviceLocation, locationPermissionStatus } = useLocationTracking();
@@ -103,11 +110,25 @@ export default function DashboardScreen() {
         setCurrentRegion: setStoreCurrentRegion,
         isLoading: mapIsLoading,
         loadingStatus, // Add this
-    } = useMapStore();
-
-    const { activeTrip, startTrip } = useActiveTripStore();
+    } = useMapStore();    const { activeTrip, startTrip } = useActiveTripStore();
     const authState = useAuth(); // Assuming you have an auth hook
 
+    // Handle URL parameters from favorites navigation
+    useEffect(() => {
+        if (params.startLocation && params.endLocation) {
+            try {
+                const startLocation = JSON.parse(params.startLocation as string);
+                const endLocation = JSON.parse(params.endLocation as string);
+                
+                setStartPointQuery(startLocation.name);
+                setDestinationQuery(endLocation.name);
+                  // Clear the URL parameters to prevent re-triggering
+                router.replace({ pathname: '/(tabs)' });
+            } catch (error) {
+                console.error('Error parsing location parameters:', error);
+            }
+        }
+    }, [params.startLocation, params.endLocation, router]);
 
     // Add location picker handlers
     const handleLocationPickerOpen = useCallback((type: 'start' | 'destination') => {
@@ -117,9 +138,7 @@ export default function DashboardScreen() {
 
     const handleLocationPickerClose = useCallback(() => {
         setLocationPickerVisible(false);
-    }, []);
-
-    const handleLocationConfirm = useCallback((coordinate: Coordinate, address: string) => {
+    }, []);    const handleLocationConfirm = useCallback((coordinate: Coordinate, address: string) => {
         if (locationPickerType === 'start') {
             setStartPointQuery(address);
         } else {
@@ -127,6 +146,67 @@ export default function DashboardScreen() {
         }
         setLocationPickerVisible(false);
     }, [locationPickerType]);
+
+    // Favorite handlers
+    const handleAddToFavorites = useCallback(() => {
+        if (!startPointQuery.trim() || !destinationQuery.trim()) {
+            Alert.alert('Missing Information', 'Please set both start and destination points before adding to favorites.');
+            return;
+        }
+        setFavoriteModalVisible(true);
+    }, [startPointQuery, destinationQuery]);
+
+    const handleSaveFavorite = useCallback(async (name: string, tags: string[]) => {
+        try {
+            // Get coordinates for start and end locations
+            let startCoord: Coordinate | null = null;
+            let endCoord: Coordinate | null = null;
+
+            if (startPointQuery.trim() === "My Current Location" && currentLocation) {
+                startCoord = currentLocation.coords;
+            } else if (startPointQuery.trim()) {
+                const geocoded = await mapApiService.geocode(startPointQuery);
+                if (geocoded) {
+                    startCoord = geocoded.coordinate;
+                }
+            }
+
+            if (destinationQuery.trim()) {
+                const geocoded = await mapApiService.geocode(destinationQuery);
+                if (geocoded) {
+                    endCoord = geocoded.coordinate;
+                }
+            }
+
+            if (!startCoord || !endCoord) {
+                Alert.alert('Error', 'Could not determine coordinates for the locations.');
+                return;
+            }
+
+            const startLocation = {
+                name: startPointQuery,
+                latitude: startCoord.latitude,
+                longitude: startCoord.longitude
+            };
+
+            const endLocation = {
+                name: destinationQuery,
+                latitude: endCoord.latitude,
+                longitude: endCoord.longitude
+            };
+
+            const favoriteId = await createFavorite(name, startLocation, endLocation, tags);
+            
+            if (favoriteId) {
+                Alert.alert('Success', 'Route saved to favorites!');
+            } else {
+                Alert.alert('Error', 'Failed to save favorite. Please try again.');
+            }
+        } catch (error) {
+            console.error('Error saving favorite:', error);
+            Alert.alert('Error', 'An unexpected error occurred while saving your favorite.');
+        }
+    }, [startPointQuery, destinationQuery, currentLocation, createFavorite]);
 
     useEffect(() => {
         // ... (effect logic remains the same) ...
@@ -439,8 +519,7 @@ export default function DashboardScreen() {
                                 <Ionicons name="chevron-forward" size={16} color={colors.text + '60'} />
                             </View>
                         </TouchableOpacity>
-                        
-                        <View style={styles.optionsRow}>
+                          <View style={styles.optionsRow}>
                             <TouchableOpacity 
                                 style={[styles.actionButton, {backgroundColor: colors.primary}]} 
                                 onPress={handlePlanTripFromInputs}
@@ -448,6 +527,14 @@ export default function DashboardScreen() {
                             >
                                 <Ionicons name="paper-plane-outline" size={18} color={colors.headerText} />
                                 <Text style={[styles.actionButtonText, {color: colors.headerText}]}>Find Route</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity 
+                                style={[styles.actionButton, {backgroundColor: colors.accent}]} 
+                                onPress={handleAddToFavorites}
+                                disabled={isFetchingRoute}
+                            >
+                                <Ionicons name="heart-outline" size={18} color={colors.headerText} />
+                                <Text style={[styles.actionButtonText, {color: colors.headerText}]}>Favorite</Text>
                             </TouchableOpacity>
                             <TouchableOpacity 
                                 style={[styles.actionButton, {backgroundColor: colors.secondary}]} 
@@ -723,14 +810,30 @@ export default function DashboardScreen() {
                 ListFooterComponent={<View style={{ height: 50 }} />}
                 keyboardShouldPersistTaps="handled"
             />
-            
-            {/* Location Picker Modal */}
+              {/* Location Picker Modal */}
             <LocationPickerModal
                 visible={locationPickerVisible}
                 onClose={handleLocationPickerClose}
                 onLocationConfirm={handleLocationConfirm}
                 title={locationPickerType === 'start' ? 'Select Start Point' : 'Select Destination'}
                 showCurrentLocationButton={locationPickerType === 'start'}
+            />
+            
+            {/* Add Favorite Modal */}
+            <AddFavoriteModal
+                visible={favoriteModalVisible}
+                onClose={() => setFavoriteModalVisible(false)}
+                onSave={handleSaveFavorite}
+                startLocation={{
+                    name: startPointQuery,
+                    latitude: 0, // Will be resolved in handleSaveFavorite
+                    longitude: 0
+                }}
+                endLocation={{
+                    name: destinationQuery,
+                    latitude: 0, // Will be resolved in handleSaveFavorite
+                    longitude: 0
+                }}
             />
         </KeyboardAvoidingView>
     );

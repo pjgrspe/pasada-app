@@ -20,7 +20,7 @@ export default function TabLayout() {
                     let iconName: React.ComponentProps<typeof Ionicons>['name'] = 'alert-circle';
                     if (route.name === 'index') iconName = focused ? 'map' : 'map-outline';
                     else if (route.name === 'trips') iconName = focused ? 'list-circle' : 'list-circle-outline';
-                    else if (route.name === 'notifications') iconName = focused ? 'notifications' : 'notifications-outline';
+                    else if (route.name === 'favorites') iconName = focused ? 'heart' : 'heart-outline';
                     else if (route.name === 'profile') iconName = focused ? 'person-circle' : 'person-circle-outline';
                     return <Ionicons name={iconName} size={size} color={color} />;
                 },
@@ -37,13 +37,12 @@ export default function TabLayout() {
                 name="index"
                 options={{
                     title: 'Pasada', // Tab bar title
-                    header: () => (
-                        <ScreenHeader
+                    header: () => (                        <ScreenHeader
                             title="Pasada" // Header title
                             showLogo={true} // Set to true to show the logo
                             logoSource={logo} // Pass the imported logo source
-                            rightIconName="notifications-outline"
-                            onRightIconPress={() => router.push('/(tabs)/notifications')}
+                            rightIconName="notifications" // Right icon name
+                            onRightIconPress={() => router.push('/(tabs)/notifications')} // Navigate to notifications on right icon press
                         />
                     ),
                 }}
@@ -54,12 +53,11 @@ export default function TabLayout() {
                     title: 'Trips',
                     headerShown: false, // This layout is handled by app/(tabs)/trips/_layout.tsx
                 }}
-            />
-             <Tabs.Screen
-                name="notifications"
+            />             <Tabs.Screen
+                name="favorites"
                 options={{
-                    title: 'Notifications',
-                     headerShown: false, // This layout is handled by app/(tabs)/notifications/_layout.tsx
+                    title: 'Favorites',
+                     headerShown: false, // This layout is handled by app/(tabs)/favorites/_layout.tsx
                 }}
             />
             <Tabs.Screen

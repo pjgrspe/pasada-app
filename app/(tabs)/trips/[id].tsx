@@ -1,6 +1,6 @@
 // app/(tabs)/trips/[id].tsx
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Marker } from 'react-native-maps';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -13,14 +13,18 @@ import { regionFromCoordinates } from '../../../modules/map/utils/mapHelpers';
 import { useTheme } from '../../../hooks/useTheme';
 import Loader from '../../../components/Loader';
 import { useFirestoreTripStore } from '@/modules/trips/store/useFirestoreTripStore';
+import { AddFavoriteModal } from '../../../components/favorites/AddFavoriteModal';
+import { useFavoritesStore } from '../../../modules/favorites/store/useFavoritesStore';
 
 const TripDetailsScreen = () => {
     const { id } = useLocalSearchParams<{ id: string }>();
     const { colors } = useTheme();
     const { getTripById } = useFirestoreTripStore();
+    const { createFavorite } = useFavoritesStore();
     const [trip, setTrip] = useState<any>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [showAddFavoriteModal, setShowAddFavoriteModal] = useState(false);
 
     useEffect(() => {
         const loadTrip = async () => {
@@ -53,10 +57,41 @@ const TripDetailsScreen = () => {
             } finally {
                 setIsLoading(false);
             }
-        };
-
-        loadTrip();
+        };        loadTrip();
     }, [id, getTripById]);
+
+    // Handler for saving trip as favorite
+    const handleSaveFavorite = async (name: string, tags: string[]) => {
+        if (!trip) return;
+
+        try {
+            // Extract location data from trip
+            const startLocation = {
+                name: trip.startLocation?.name || trip.startLocation || 'Unknown Start',
+                latitude: trip.startLocation?.latitude || trip.startCoordinate?.latitude || 0,
+                longitude: trip.startLocation?.longitude || trip.startCoordinate?.longitude || 0,
+                placeId: trip.startLocation?.placeId,
+            };
+
+            const endLocation = {
+                name: trip.endLocation?.name || trip.endLocation || 'Unknown End', 
+                latitude: trip.endLocation?.latitude || trip.endCoordinate?.latitude || 0,
+                longitude: trip.endLocation?.longitude || trip.endCoordinate?.longitude || 0,
+                placeId: trip.endLocation?.placeId,
+            };
+
+            const favoriteId = await createFavorite(name, startLocation, endLocation, tags);
+            
+            if (favoriteId) {
+                Alert.alert('Success', 'Trip saved to favorites!');
+            } else {
+                Alert.alert('Error', 'Failed to save favorite. Please try again.');
+            }
+        } catch (error) {
+            console.error('Error saving favorite:', error);
+            Alert.alert('Error', 'Failed to save favorite. Please try again.');
+        }
+    };
 
     const dynamicStyles = StyleSheet.create({
         background: { backgroundColor: colors.background },
@@ -230,12 +265,22 @@ const TripDetailsScreen = () => {
                     {endLocationName}
                 </Text>
             </View>
-            
-            {/* Status Badge */}
+              {/* Status Badge */}
             <View style={[styles.statusBadge, { backgroundColor: colors.card }]}>
                 <Text style={[styles.statusText, getStatusStyle(trip.status)]}>
                     {trip.status?.toUpperCase() || 'UNKNOWN'}
                 </Text>
+            </View>
+
+            {/* Favorite Button */}
+            <View style={styles.actionButtonContainer}>
+                <TouchableOpacity
+                    style={[styles.favoriteButton, { backgroundColor: colors.primary }]}
+                    onPress={() => setShowAddFavoriteModal(true)}
+                >
+                    <Ionicons name="heart-outline" size={20} color="white" />
+                    <Text style={styles.favoriteButtonText}>Add to Favorites</Text>
+                </TouchableOpacity>
             </View>
 
             {/* Map */}
@@ -313,10 +358,28 @@ const TripDetailsScreen = () => {
                             value={trip.notes} 
                             icon="document-text" 
                             textStyle={dynamicStyles.text} 
-                        />
-                    )}
+                        />                    )}
                 </View>
             )}
+
+            {/* Add Favorite Modal */}
+            <AddFavoriteModal
+                visible={showAddFavoriteModal}
+                onClose={() => setShowAddFavoriteModal(false)}
+                onSave={handleSaveFavorite}
+                startLocation={{
+                    name: trip?.startLocation?.name || trip?.startLocation || 'Unknown Start',
+                    latitude: trip?.startLocation?.latitude || trip?.startCoordinate?.latitude || 0,
+                    longitude: trip?.startLocation?.longitude || trip?.startCoordinate?.longitude || 0,
+                    placeId: trip?.startLocation?.placeId,
+                }}
+                endLocation={{
+                    name: trip?.endLocation?.name || trip?.endLocation || 'Unknown End',
+                    latitude: trip?.endLocation?.latitude || trip?.endCoordinate?.latitude || 0,
+                    longitude: trip?.endLocation?.longitude || trip?.endCoordinate?.longitude || 0,
+                    placeId: trip?.endLocation?.placeId,
+                }}
+            />
         </ScrollView>
     );
 };
@@ -415,9 +478,28 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         marginTop: 16,
         textAlign: 'center',
-    },
-    chevron: {
+    },    chevron: {
         marginHorizontal: 8,
+    },
+    actionButtonContainer: {
+        marginHorizontal: 16,
+        marginBottom: 16,
+        alignItems: 'center',
+    },
+    favoriteButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 12,
+        paddingHorizontal: 20,
+        borderRadius: 25,
+        minWidth: 160,
+    },
+    favoriteButtonText: {
+        color: 'white',
+        fontSize: 16,
+        fontWeight: '600',
+        marginLeft: 8,
     },
 });
 
