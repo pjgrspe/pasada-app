@@ -1,7 +1,8 @@
 {
   "name": "pasada-app",
   "main": "expo-router/entry",
-  "version": "1.0.0",  "scripts": {
+  "version": "1.0.0",
+  "scripts": {
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
@@ -43,7 +44,8 @@
     "tinyqueue": "^3.0.0",
     "uuid": "^11.1.0",
     "zod": "^3.25.28",
-    "zustand": "^5.0.5"
+    "zustand": "^5.0.5",
+    "react-native-gesture-handler": "~2.24.0"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

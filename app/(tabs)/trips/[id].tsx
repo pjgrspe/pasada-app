@@ -35,6 +35,14 @@ const TripDetailsScreen = () => {
                 setError(null);
                 const tripData = await getTripById(id);
                 if (tripData) {
+                    console.log('TripDetailsScreen - Trip data loaded:', {
+                        id: tripData.id,
+                        startTime: tripData.startTime,
+                        endTime: tripData.endTime,
+                        startTimeType: typeof tripData.startTime,
+                        endTimeType: typeof tripData.endTime,
+                        fullData: tripData
+                    });
                     setTrip(tripData);
                 } else {
                     setError('Trip not found');
@@ -65,24 +73,98 @@ const TripDetailsScreen = () => {
         statusCancelled: { color: colors.error },
     });
 
-    // Format helper functions
+    // Format helper functions - SIMPLIFIED since data is already formatted
     const formatTimestamp = (timestamp: any, format: 'date' | 'time' = 'date') => {
         if (!timestamp) return 'N/A';
-        const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
         
-        if (format === 'time') {
-            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        // If it's already a formatted string, return it
+        if (typeof timestamp === 'string') {
+            // Handle special cases
+            if (timestamp === 'In progress') return timestamp;
+            
+            // If it's already formatted time (contains AM/PM), return as is for time format
+            if (format === 'time' && (timestamp.includes('AM') || timestamp.includes('PM'))) {
+                return timestamp;
+            }
+            
+            // If it's a date string like "2024-05-30", format it
+            if (format === 'date' && timestamp.includes('-')) {
+                try {
+                    const date = new Date(timestamp);
+                    if (!isNaN(date.getTime())) {
+                        return date.toLocaleDateString([], { 
+                            year: 'numeric', 
+                            month: 'short', 
+                            day: 'numeric' 
+                        });
+                    }
+                } catch (error) {
+                    console.log('Error parsing date string:', error);
+                }
+            }
+            
+            // For other time requests on date strings, try to extract time
+            if (format === 'time' && timestamp.includes('-')) {
+                // This might be a date string being requested for time - return N/A
+                return 'N/A';
+            }
+            
+            // Return as is if we can't determine the format
+            return timestamp;
         }
-        return date.toLocaleDateString();
+        
+        // Handle Firestore Timestamp objects (if any raw data comes through)
+        try {
+            let date;
+            
+            if (timestamp && typeof timestamp.toDate === 'function') {
+                date = timestamp.toDate();
+            } else if (timestamp && timestamp.seconds !== undefined) {
+                date = new Date(timestamp.seconds * 1000 + (timestamp.nanoseconds || 0) / 1000000);
+            } else if (typeof timestamp === 'number') {
+                date = new Date(timestamp);
+            } else if (timestamp instanceof Date) {
+                date = timestamp;
+            } else {
+                console.log('formatTimestamp - Unhandled timestamp type:', typeof timestamp, timestamp);
+                return 'N/A';
+            }
+
+            if (!date || isNaN(date.getTime())) {
+                console.log('formatTimestamp - Invalid date created from:', timestamp);
+                return 'N/A';
+            }
+            
+            if (format === 'time') {
+                return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+            } else {
+                return date.toLocaleDateString([], { 
+                    year: 'numeric', 
+                    month: 'short', 
+                    day: 'numeric' 
+                });
+            }
+        } catch (error) {
+            console.log('formatTimestamp - Error:', error, 'Input:', timestamp);
+            return 'N/A';
+        }
     };
 
-    const formatDistance = (distance: number) => {
-        if (!distance) return 'N/A';
+    const formatDistance = (distance: number | string) => {
+        // Handle if distance is already formatted as string
+        if (typeof distance === 'string') {
+            return distance;
+        }
+        if (!distance || isNaN(distance)) return 'N/A';
         return `${(distance / 1000).toFixed(1)} km`;
     };
 
-    const formatDuration = (duration: number) => {
-        if (!duration) return 'N/A';
+    const formatDuration = (duration: number | string) => {
+        // Handle if duration is already formatted as string
+        if (typeof duration === 'string') {
+            return duration;
+        }
+        if (!duration || isNaN(duration)) return 'N/A';
         const minutes = Math.round(duration / 60);
         const hours = Math.floor(minutes / 60);
         const remainingMinutes = minutes % 60;
@@ -133,13 +215,21 @@ const TripDetailsScreen = () => {
         }
     };
 
+    // Get location names with proper fallbacks - FIXED
+    const startLocationName = trip.startLocation?.name || trip.startLocation || 'Unknown Start';
+    const endLocationName = trip.endLocation?.name || trip.endLocation || 'Unknown End';
+
     return (
         <ScrollView style={[styles.container, dynamicStyles.background]}>
-            <Text style={[styles.title, dynamicStyles.text]}>
-                {trip.startLocation?.name || 'Unknown Start'}{' '}
-                <Ionicons name="chevron-forward" size={20} color={colors.primary} style={styles.chevron} />{' '}
-                {trip.endLocation?.name || 'Unknown End'}
-            </Text>
+            <View style={styles.titleContainer}>
+                <Text style={[styles.title, dynamicStyles.text]}>
+                    {startLocationName}
+                </Text>
+                <Ionicons name="chevron-forward" size={20} color={colors.primary} style={styles.chevron} />
+                <Text style={[styles.title, dynamicStyles.text]}>
+                    {endLocationName}
+                </Text>
+            </View>
             
             {/* Status Badge */}
             <View style={[styles.statusBadge, { backgroundColor: colors.card }]}>
@@ -168,23 +258,23 @@ const TripDetailsScreen = () => {
             {/* Location Details */}
             <View style={[styles.detailCard, dynamicStyles.card]}>
                 <Detail label="Trip ID" value={trip.id || 'N/A'} icon="barcode" textStyle={dynamicStyles.text} />
-                <Detail label="Start Location" value={trip.startLocation?.name || 'N/A'} icon="location" textStyle={dynamicStyles.text} />
-                <Detail label="End Location" value={trip.endLocation?.name || 'N/A'} icon="flag" textStyle={dynamicStyles.text} />
+                <Detail label="Start Location" value={startLocationName} icon="location" textStyle={dynamicStyles.text} />
+                <Detail label="End Location" value={endLocationName} icon="flag" textStyle={dynamicStyles.text} />
             </View>
 
             {/* Trip Details */}
             <View style={[styles.detailCard, dynamicStyles.card]}>
-                <Detail label="Date" value={formatTimestamp(trip.startTime)} icon="calendar" textStyle={dynamicStyles.text} />
+                <Detail label="Date" value={trip.date || formatTimestamp(trip.startTime)} icon="calendar" textStyle={dynamicStyles.text} />
                 <Detail 
                     label="Time" 
-                    value={`${formatTimestamp(trip.startTime, 'time')} – ${trip.endTime ? formatTimestamp(trip.endTime, 'time') : 'In progress'}`} 
+                    value={`${trip.startTime || formatTimestamp(trip.startTime, 'time')} – ${trip.endTime || 'In progress'}`} 
                     icon="time" 
                     textStyle={dynamicStyles.text} 
                 />
-                <Detail label="Distance" value={formatDistance(trip.totalDistance)} icon="walk" textStyle={dynamicStyles.text} />
+                <Detail label="Distance" value={trip.distance || formatDistance(trip.totalDistance)} icon="walk" textStyle={dynamicStyles.text} />
                 <Detail 
                     label="Duration" 
-                    value={formatDuration(trip.actualDuration || trip.estimatedDuration)} 
+                    value={trip.duration || formatDuration(trip.actualDuration || trip.estimatedDuration)} 
                     icon="hourglass" 
                     textStyle={dynamicStyles.text} 
                 />
@@ -259,12 +349,18 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         paddingHorizontal: 20,
     },
-    title: {
-        fontSize: 22,
-        fontWeight: '700',
-        textAlign: 'center',
+    titleContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
         marginVertical: 16,
         paddingHorizontal: 16,
+    },
+    title: {
+        fontSize: 18,
+        fontWeight: '700',
+        textAlign: 'center',
+        flex: 1,
     },
     statusBadge: {
         alignSelf: 'center',
@@ -321,7 +417,7 @@ const styles = StyleSheet.create({
         textAlign: 'center',
     },
     chevron: {
-        marginHorizontal: 4,
+        marginHorizontal: 8,
     },
 });
 
