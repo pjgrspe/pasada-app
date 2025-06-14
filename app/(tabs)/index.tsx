@@ -22,6 +22,7 @@ import Loader from '@/components/Loader';
 import InstructionLegItem from '@/modules/map/components/InstructionLegItem'; // NEW IMPORT
 import LoadingStatusDisplay from '@/modules/map/components/LoadingStatusDisplay';
 import LocationPickerModal from '@/modules/map/components/LocationPickerModal'; // NEW IMPORT
+import JeepTrackingLayer from '@/modules/map/components/JeepTrackingLayer'; // NEW IMPORT
 import { AddFavoriteModal } from '@/components/favorites/AddFavoriteModal';
 
 import MapViewComponent from '@/modules/map/components/MapViewComponent';
@@ -116,6 +117,8 @@ export default function DashboardScreen() {
         setCurrentRegion: setStoreCurrentRegion,
         isLoading: mapIsLoading,
         loadingStatus, // Add this
+        showJeeps,
+        setShowJeeps,
     } = useMapStore();
     
     const { activeTrip, startTrip } = useActiveTripStore();
@@ -153,6 +156,15 @@ export default function DashboardScreen() {
         
         return [...mapDisplayRoutes, ...jeepneyRoutes];
     }, [mapDisplayRoutes, jeepneyRouteVisibility]);
+
+    // Create list of visible jeepney route IDs for jeep tracking
+    const visibleJeepneyRouteIds = React.useMemo(() => {
+        const routeIds: string[] = [];
+        if (jeepneyRouteVisibility['checkpoint-silver']) routeIds.push('checkpoint-silver');
+        if (jeepneyRouteVisibility['checkpoint-violet']) routeIds.push('checkpoint-violet');
+        if (jeepneyRouteVisibility['marisol']) routeIds.push('marisol');
+        return routeIds;
+    }, [jeepneyRouteVisibility]);
 
     // Handle URL parameters from favorites navigation
     useEffect(() => {
@@ -652,6 +664,33 @@ export default function DashboardScreen() {
                                 </Text>
                             </TouchableOpacity>
                         </View>
+                        
+                        {/* Jeep Visibility Toggle */}
+                        <View style={styles.jeepToggleContainer}>
+                            <TouchableOpacity
+                                style={[
+                                    styles.jeepToggleButton,
+                                    { 
+                                        backgroundColor: showJeeps ? colors.primary : colors.card,
+                                        borderColor: colors.primary,
+                                        borderWidth: 2
+                                    }
+                                ]}
+                                onPress={() => setShowJeeps(!showJeeps)}
+                            >
+                                <Ionicons 
+                                    name={showJeeps ? "location" : "location-outline"} 
+                                    size={16} 
+                                    color={showJeeps ? colors.headerText : colors.text} 
+                                />
+                                <Text style={[
+                                    styles.jeepToggleButtonText,
+                                    { color: showJeeps ? colors.headerText : colors.text }
+                                ]}>
+                                    {showJeeps ? 'Hide Jeeps' : 'Show Jeeps'}
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
                     </View>
                 );
             case 'map_view':
@@ -678,6 +717,9 @@ export default function DashboardScreen() {
                                     zIndex={route.routeType === 'jeepney' ? 10 : 5} 
                                 />
                             ))}
+                            
+                            {/* Jeep Tracking Layer */}
+                            <JeepTrackingLayer visibleRouteIds={visibleJeepneyRouteIds} />
                         </MapViewComponent>
                         
                         {/* Add the LoadingStatusDisplay as an overlay inside the map container */}
@@ -1030,6 +1072,27 @@ const styles = StyleSheet.create({
     jeepneyRouteButtonText: {
         fontSize: 12,
         fontWeight: '600',
+    },
+    jeepToggleContainer: {
+        marginTop: 12,
+        alignItems: 'center',
+    },
+    jeepToggleButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 8,
+        paddingHorizontal: 16,
+        borderRadius: 20,
+        borderWidth: 2,
+        elevation: 1,
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 1,
+    },
+    jeepToggleButtonText: {
+        fontSize: 12,
+        fontWeight: '600',
+        marginLeft: 6,
     },
     mapContainer: {
         height: 350,

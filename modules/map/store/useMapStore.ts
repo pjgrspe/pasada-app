@@ -1,6 +1,7 @@
 // pasada-gemini/modules/map/store/useMapStore.ts
 import { create } from 'zustand';
 import { Region } from 'react-native-maps';
+import { JeepLocation } from '../services/jeepTrackingService';
 
 // Interface for a single map marker
 export interface MapMarker {
@@ -33,6 +34,12 @@ interface MapState {
   error: string | null;
   loadingStatus: string | null; // Add this new field
 
+  // Jeep tracking state
+  jeepLocations: Map<string, JeepLocation>;
+  trackedRoutes: string[];
+  showJeeps: boolean;
+  jeepTrackingEnabled: boolean;
+
   // Actions
   setCurrentRegion: (region: Region) => void;
   
@@ -56,6 +63,15 @@ interface MapState {
   setMapLoading: (loading: boolean) => void;
   setMapError: (error: string | null) => void;
   setLoadingStatus: (status: string | null) => void; // Add this new action
+
+  // Jeep tracking actions
+  setJeepLocations: (locations: Map<string, JeepLocation>) => void;
+  updateJeepLocation: (jeep: JeepLocation) => void;
+  removeJeepLocation: (jeepId: string, routeId: string) => void;
+  setTrackedRoutes: (routeIds: string[]) => void;
+  setShowJeeps: (show: boolean) => void;
+  setJeepTrackingEnabled: (enabled: boolean) => void;
+  clearJeepLocations: () => void;
 }
 
 export const useMapStore = create<MapState>((set, get) => ({
@@ -69,6 +85,12 @@ export const useMapStore = create<MapState>((set, get) => ({
   isLoading: false,
   error: null,
   loadingStatus: null, // Add this
+
+  // Jeep tracking initial state
+  jeepLocations: new Map<string, JeepLocation>(),
+  trackedRoutes: [],
+  showJeeps: true,
+  jeepTrackingEnabled: false,
 
   setCurrentRegion: (region) => set({ currentRegion: region }),
 
@@ -139,4 +161,23 @@ export const useMapStore = create<MapState>((set, get) => ({
   setMapLoading: (loading) => set({ isLoading: loading }),
   setMapError: (error) => set({ error: error }),
   setLoadingStatus: (status) => set({ loadingStatus: status }), // Add this
+
+  // Jeep tracking actions
+  setJeepLocations: (locations) => set({ jeepLocations: locations }),
+  updateJeepLocation: (jeep) => set(state => {
+    const newLocations = new Map(state.jeepLocations);
+    const jeepKey = `${jeep.routeId}-${jeep.jeepId}`;
+    newLocations.set(jeepKey, jeep);
+    return { jeepLocations: newLocations };
+  }),
+  removeJeepLocation: (jeepId, routeId) => set(state => {
+    const newLocations = new Map(state.jeepLocations);
+    const jeepKey = `${routeId}-${jeepId}`;
+    newLocations.delete(jeepKey);
+    return { jeepLocations: newLocations };
+  }),
+  setTrackedRoutes: (routeIds) => set({ trackedRoutes: routeIds }),
+  setShowJeeps: (show) => set({ showJeeps: show }),
+  setJeepTrackingEnabled: (enabled) => set({ jeepTrackingEnabled: enabled }),
+  clearJeepLocations: () => set({ jeepLocations: new Map() }),
 }));
